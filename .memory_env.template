@@ -1,0 +1,17 @@
+# .memory_env — Jarvis Memory System Environment Config
+# Copy this to .memory_env and set values for your environment.
+# All scripts load from .secrets/ by default — this file is for overrides only.
+# DO NOT commit this file to git if you set actual values here.
+
+# Redis
+# REDIS_HOST=127.0.0.1
+# REDIS_PORT=6379
+
+# Qdrant
+# QDRANT_URL=http://127.0.0.1:6333
+
+# Ollama (Mac Mini via Tailscale)
+# OLLAMA_HOST=http://100.73.153.121:11434
+# EMBED_MODEL=qwen3-embedding:0.6b
+# LLM_MODEL=qwen3:14b
+# EMBED_DIMS=1024

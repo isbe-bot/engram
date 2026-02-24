@@ -1,0 +1,13 @@
+# Secrets — never commit these
+.secrets/
+.memory_env
+
+# Node
+node_modules/
+
+# Logs
+*.log
+/var/log/mem-*.log
+
+# OS
+.DS_Store
