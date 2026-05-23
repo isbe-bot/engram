@@ -266,7 +266,7 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 	return results, nextCursor, nil
 }
 
-func (s *Store) ListMemoryObjectEvents(ctx context.Context, objectID string, limit int) ([]map[string]any, error) {
+func (s *Store) ListMemoryObjectEvents(ctx context.Context, objectID, action string, beforeID, limit int) ([]map[string]any, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("sqlite store is not initialized")
 	}
@@ -278,13 +278,26 @@ func (s *Store) ListMemoryObjectEvents(ctx context.Context, objectID string, lim
 		limit = 50
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	filters := []string{"object_id = ?"}
+	args := []any{objectID}
+	if strings.TrimSpace(action) != "" {
+		filters = append(filters, "action = ?")
+		args = append(args, strings.TrimSpace(action))
+	}
+	if beforeID > 0 {
+		filters = append(filters, "id < ?")
+		args = append(args, beforeID)
+	}
+
+	sqlText := `
 		SELECT id, action, reason, payload_json, created_at
 		FROM memory_object_events
-		WHERE object_id = ?
+		WHERE ` + strings.Join(filters, " AND ") + `
 		ORDER BY id DESC
 		LIMIT ?
-	`, objectID, limit)
+	`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list memory object events: %w", err)
 	}

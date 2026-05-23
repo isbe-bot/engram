@@ -29,7 +29,7 @@ type curator interface {
 type governor interface {
 	Correct(ctx context.Context, objectID string, req contracts.MemoryCorrectRequest) (models.MemoryObject, error)
 	Deprecate(ctx context.Context, objectID string, req contracts.MemoryDeprecateRequest) (models.MemoryObject, error)
-	History(ctx context.Context, objectID string, limit int) ([]map[string]any, error)
+	History(ctx context.Context, objectID string, req contracts.MemoryHistoryRequest) ([]map[string]any, error)
 }
 
 type pinger interface {
@@ -190,7 +190,14 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 					limit = v
 				}
 			}
-			events, err := deps.Govern.History(r.Context(), objectID, limit)
+			before := 0
+			if raw := strings.TrimSpace(r.URL.Query().Get("before")); raw != "" {
+				if v, err := strconv.Atoi(raw); err == nil {
+					before = v
+				}
+			}
+			action := strings.TrimSpace(r.URL.Query().Get("action"))
+			events, err := deps.Govern.History(r.Context(), objectID, contracts.MemoryHistoryRequest{Action: action, Before: before, Limit: limit})
 			if err != nil {
 				status := http.StatusBadRequest
 				if strings.Contains(strings.ToLower(err.Error()), "not found") {
@@ -199,7 +206,12 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 				writeJSON(w, status, map[string]any{"error": err.Error()})
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"object_id": objectID, "count": len(events), "events": events})
+			writeJSON(w, http.StatusOK, map[string]any{
+				"object_id": objectID,
+				"count":     len(events),
+				"events":    events,
+				"filters":   map[string]any{"action": action, "before": before, "limit": limit},
+			})
 		case "correct":
 			if r.Method != http.MethodPost {
 				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})

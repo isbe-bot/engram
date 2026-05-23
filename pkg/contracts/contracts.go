@@ -14,10 +14,18 @@ type MemoryCorrectRequest struct {
 	Content    string   `json:"content"`
 	Reason     string   `json:"reason"`
 	SourceRefs []string `json:"source_refs,omitempty"`
+	Force      bool     `json:"force,omitempty"`
 }
 
 type MemoryDeprecateRequest struct {
 	Reason string `json:"reason"`
+	Force  bool   `json:"force,omitempty"`
+}
+
+type MemoryHistoryRequest struct {
+	Action string
+	Before int
+	Limit  int
 }
 
 type SearchResponse struct {

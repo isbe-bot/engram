@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/aileun/engram/internal/policy"
 )
 
 const (
@@ -47,8 +49,8 @@ func (m *MemoryObject) NormalizeAndValidate(now time.Time) error {
 		}
 	}
 	m.SourceRefs = refs
-	if len(m.SourceRefs) == 0 {
-		return fmt.Errorf("source_refs must include at least one reference")
+	if err := policy.ValidateSourceRefs(m.SourceRefs); err != nil {
+		return err
 	}
 
 	if m.SchemaVer == "" {
@@ -56,6 +58,9 @@ func (m *MemoryObject) NormalizeAndValidate(now time.Time) error {
 	}
 	if m.Classification == "" {
 		m.Classification = "general"
+	}
+	if err := policy.ValidateClassification(m.Classification); err != nil {
+		return err
 	}
 	if m.Status == "" {
 		m.Status = MemoryStatusAccepted

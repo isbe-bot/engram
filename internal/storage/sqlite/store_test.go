@@ -200,3 +200,54 @@ func TestSearchMemoryObjectsWithFiltersAndCitations(t *testing.T) {
 		t.Fatalf("expected empty page2 cursor, got %q", page2Cursor)
 	}
 }
+
+func TestListMemoryObjectEventsFilters(t *testing.T) {
+	ctx := context.Background()
+	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	obj := models.MemoryObject{
+		ObjectID:       "mem-h1",
+		Type:           "decision",
+		SchemaVer:      "v1",
+		Content:        "Use policy checks",
+		SourceRefs:     []string{"adr:0011"},
+		Confidence:     0.75,
+		Classification: "product",
+		Status:         models.MemoryStatusAccepted,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if _, err := store.CreateMemoryObject(ctx, obj); err != nil {
+		t.Fatalf("create memory object: %v", err)
+	}
+	if _, err := store.CorrectMemoryObject(ctx, obj.ObjectID, "Use strict policy checks", "Clarify enforcement details", []string{"adr:0011", "spec:m6"}); err != nil {
+		t.Fatalf("correct memory object: %v", err)
+	}
+
+	allEvents, err := store.ListMemoryObjectEvents(ctx, obj.ObjectID, "", 0, 10)
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if len(allEvents) < 2 {
+		t.Fatalf("expected at least 2 events, got %d", len(allEvents))
+	}
+
+	correctedOnly, err := store.ListMemoryObjectEvents(ctx, obj.ObjectID, "corrected", 0, 10)
+	if err != nil {
+		t.Fatalf("list corrected events: %v", err)
+	}
+	if len(correctedOnly) != 1 {
+		t.Fatalf("expected 1 corrected event, got %d", len(correctedOnly))
+	}
+	if correctedOnly[0]["action"] != "corrected" {
+		t.Fatalf("unexpected action: %v", correctedOnly[0]["action"])
+	}
+}
