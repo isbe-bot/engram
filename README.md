@@ -4,7 +4,7 @@ Open-source memory intelligence core for AI agents.
 
 ## Binaries
 - `engramd`: local daemon/service (ingest, curation, retrieval, governance, quality)
-- `engramctl`: operator CLI (status, migrate, quality, maintenance)
+- `engramctl`: operator CLI (status, migrate, quality, health, ingest, curate, search, get, correct, deprecate, history)
 
 ## Quick start
 ```bash
@@ -13,6 +13,7 @@ make test
 ./bin/engramd --config ./configs/example.yaml
 ./bin/engramctl migrate --config ./configs/example.yaml
 ./bin/engramctl status --config ./configs/example.yaml
+./bin/engramctl health --config ./configs/example.yaml
 ```
 
 ## Current API (v1 bootstrap)
@@ -20,6 +21,7 @@ make test
 - `GET /v1/health`
 - `POST /v1/events/ingest`
 - `POST /v1/memory/curate`
+- `GET /v1/memory/{object_id}`
 - `POST /v1/memory/{object_id}/correct` (supports `force=true` for protected high-confidence memory)
 - `POST /v1/memory/{object_id}/deprecate` (supports `force=true` for protected high-confidence memory)
 - `GET /v1/memory/{object_id}/history?limit=<n>&action=<curated|corrected|deprecated>&before=<event_id>`
@@ -72,6 +74,34 @@ curl -s 'http://127.0.0.1:8787/v1/memory/search?q=Go&status=accepted&min_confide
 curl -s http://127.0.0.1:8787/v1/quality/metrics
 ```
 
+### Example CLI API usage
+
+```bash
+./bin/engramctl ingest --config ./configs/example.yaml --json '{
+  "event_id":"evt-001",
+  "event_type":"task.completed",
+  "environment_id":"client-alpha",
+  "occurred_at":"2026-05-23T02:00:00Z",
+  "data":{"title":"Kickoff complete"}
+}'
+
+./bin/engramctl curate --config ./configs/example.yaml --json '{
+  "object_id":"mem-1",
+  "type":"decision",
+  "content":"Use Go for ENGRAM core",
+  "source_refs":["adr:0009"],
+  "confidence":0.85,
+  "classification":"product",
+  "envelope":{"actor_id":"operator","mutation_id":"mut-001","signature":"sig-001"}
+}'
+
+./bin/engramctl get --config ./configs/example.yaml --id mem-1
+./bin/engramctl search --config ./configs/example.yaml --q Go --status accepted --min-confidence 0.8 --include-events
+./bin/engramctl history --config ./configs/example.yaml --id mem-1 --action curated
+```
+
+For JSON-heavy commands, use `--file payload.json` or `--file -` for stdin instead of `--json`.
+
 Search responses include:
 - `rank_score` (lightweight relevance ranking)
 - `next_cursor` (offset pagination cursor for memory-object results)
@@ -100,7 +130,8 @@ This foundation is aligned with `engram-go-service-blueprint-v1.md` and now incl
 - SQLite-backed event ingestion
 - memory object contract tables (`memory_objects`, `memory_object_events`)
 - migration runner (embedded SQL)
-- curation and governance endpoints (`curate`, `correct`, `deprecate`)
+- curation and governance endpoints (`curate`, `get`, `correct`, `deprecate`, `history`)
 - filtered retrieval over curated `memory_objects` with confidence/status controls and citation paths
 - CLI status/migrate/quality commands (event + memory counts, freshness, correction/deprecation rates)
+- API-backed CLI commands for health, ingest, curate, search, get, correct, deprecate, and history
 - quality metrics endpoint for ingestion freshness, memory counts, audit action counts, and governance rates

@@ -27,6 +27,17 @@ func NewService(store memoryGovernor) *Service {
 	return &Service{store: store}
 }
 
+func (s *Service) Get(ctx context.Context, objectID string) (models.MemoryObject, error) {
+	if s == nil || s.store == nil {
+		return models.MemoryObject{}, fmt.Errorf("govern service is not initialized")
+	}
+	objectID = strings.TrimSpace(objectID)
+	if objectID == "" {
+		return models.MemoryObject{}, fmt.Errorf("object_id is required")
+	}
+	return s.store.GetMemoryObject(ctx, objectID)
+}
+
 func (s *Service) Correct(ctx context.Context, objectID string, req contracts.MemoryCorrectRequest) (models.MemoryObject, error) {
 	if s == nil || s.store == nil {
 		return models.MemoryObject{}, fmt.Errorf("govern service is not initialized")

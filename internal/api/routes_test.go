@@ -111,6 +111,13 @@ func TestMemoryAPIIntegrationLifecycle(t *testing.T) {
 		t.Fatalf("unexpected corrected memory: %+v", corrected)
 	}
 
+	getResp := doJSON(t, client, http.MethodGet, ts.server.URL+"/v1/memory/mem-api-1", nil, http.StatusOK)
+	fetched := mapValue(t, getResp, "memory")
+	if fetched["object_id"] != "mem-api-1" {
+		t.Fatalf("unexpected fetched memory: %+v", fetched)
+	}
+	doJSON(t, client, http.MethodGet, ts.server.URL+"/v1/memory/missing-object", nil, http.StatusNotFound)
+
 	searchResp := doJSON(t, client, http.MethodGet, ts.server.URL+"/v1/memory/search?q=HTTP&status=accepted&min_confidence=0.8&include_events=true", nil, http.StatusOK)
 	if got := int(searchResp["count"].(float64)); got < 1 {
 		t.Fatalf("expected at least one search result, got %+v", searchResp)

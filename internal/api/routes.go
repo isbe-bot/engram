@@ -32,6 +32,7 @@ type curator interface {
 }
 
 type governor interface {
+	Get(ctx context.Context, objectID string) (models.MemoryObject, error)
 	Correct(ctx context.Context, objectID string, req contracts.MemoryCorrectRequest) (models.MemoryObject, error)
 	Deprecate(ctx context.Context, objectID string, req contracts.MemoryDeprecateRequest) (models.MemoryObject, error)
 	History(ctx context.Context, objectID string, req contracts.MemoryHistoryRequest) ([]map[string]any, error)
@@ -193,6 +194,24 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 
 		path := strings.TrimPrefix(r.URL.Path, "/v1/memory/")
 		parts := strings.Split(path, "/")
+		if len(parts) == 1 && strings.TrimSpace(parts[0]) != "" {
+			if r.Method != http.MethodGet {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+				return
+			}
+			objectID := parts[0]
+			obj, err := deps.Govern.Get(r.Context(), objectID)
+			if err != nil {
+				status := http.StatusBadRequest
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					status = http.StatusNotFound
+				}
+				writeJSON(w, status, map[string]any{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"memory": obj})
+			return
+		}
 		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 			return
