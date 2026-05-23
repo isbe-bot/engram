@@ -89,6 +89,24 @@ Search results include deterministic `citations`, `rank_score`, and `retrieval_s
 
 Allowed source ref prefixes are `adr:`, `chat:`, `spec:`, `meeting:`, `task:`, `event:`, and `doc:`.
 
+## Portable JSONL
+
+`engramctl export` and `engramctl import` use newline-delimited JSON records for migrations and audits.
+
+Event record:
+
+```json
+{"kind":"event","version":"engram.portable.v1","event":{"event_id":"evt-1","event_type":"task.completed","environment_id":"local","occurred_at":"2026-05-23T19:45:00Z","data":{"ok":true}}}
+```
+
+Memory record:
+
+```json
+{"kind":"memory_object","version":"engram.portable.v1","memory":{"object_id":"mem-1","type":"decision","schema_version":"v1","content":"Use ENGRAM.","source_refs":["spec:portable-jsonl"],"confidence":0.8,"classification":"operations","scope":"local","status":"accepted"}}
+```
+
+Imports validate records, skip duplicates, and can reindex imported memory into Qdrant.
+
 ## OpenAPI
 
 A compact OpenAPI document is provided at `docs/openapi.yaml`.

@@ -100,6 +100,32 @@ func TestStoreInsertAndSearch(t *testing.T) {
 	}
 }
 
+func TestListEvents(t *testing.T) {
+	ctx := context.Background()
+	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	if err := store.InsertEvent(ctx, events.Envelope{EventID: "evt-list-1", EventType: "test.one", EnvironmentID: "env", OccurredAt: "2026-05-23T19:45:00Z", Data: map[string]any{"ok": true}}); err != nil {
+		t.Fatalf("insert event1: %v", err)
+	}
+	if err := store.InsertEvent(ctx, events.Envelope{EventID: "evt-list-2", EventType: "test.two", EnvironmentID: "env", OccurredAt: "2026-05-23T19:46:00Z", Data: map[string]any{"n": float64(2)}}); err != nil {
+		t.Fatalf("insert event2: %v", err)
+	}
+	eventsOut, err := store.ListEvents(ctx, 10)
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if len(eventsOut) != 2 || eventsOut[0].EventID != "evt-list-1" || eventsOut[1].EventID != "evt-list-2" {
+		t.Fatalf("unexpected events: %+v", eventsOut)
+	}
+}
+
 func TestMemoryObjectLifecycle(t *testing.T) {
 	ctx := context.Background()
 	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))

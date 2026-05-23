@@ -84,6 +84,45 @@ func (s *Store) InsertEvent(ctx context.Context, env events.Envelope) error {
 	return nil
 }
 
+func (s *Store) ListEvents(ctx context.Context, limit int) ([]events.Envelope, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("sqlite store is not initialized")
+	}
+	if limit <= 0 || limit > 100000 {
+		limit = 10000
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT event_id, event_type, environment_id, occurred_at, data_json
+		FROM ingested_events
+		ORDER BY occurred_at ASC, event_id ASC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list events: %w", err)
+	}
+	defer rows.Close()
+
+	eventsOut := make([]events.Envelope, 0)
+	for rows.Next() {
+		var env events.Envelope
+		var dataStr string
+		if err := rows.Scan(&env.EventID, &env.EventType, &env.EnvironmentID, &env.OccurredAt, &dataStr); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		if strings.TrimSpace(dataStr) != "" {
+			_ = json.Unmarshal([]byte(dataStr), &env.Data)
+		}
+		if env.Data == nil {
+			env.Data = map[string]any{}
+		}
+		eventsOut = append(eventsOut, env)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events: %w", err)
+	}
+	return eventsOut, nil
+}
+
 func (s *Store) SearchEvents(ctx context.Context, query string, limit int) ([]map[string]any, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("sqlite store is not initialized")

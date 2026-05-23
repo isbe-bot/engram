@@ -83,6 +83,7 @@ make build
 ./bin/engramctl health --config ./engram.yaml
 ./bin/engramctl reindex --config ./engram.yaml
 ./bin/engramctl report --config ./engram.yaml
+./bin/engramctl export --config ./engram.yaml --out ./data/backups/engram-export.jsonl
 ./bin/engramctl backup --config ./engram.yaml --out ./data/backups/engram.sqlite.bak
 ```
 
@@ -264,6 +265,18 @@ curl -s http://127.0.0.1:8787/v1/quality/report
 ./bin/engramctl search --config ./configs/example.yaml --q Go --status accepted --min-confidence 0.8 --include-events
 ./bin/engramctl history --config ./configs/example.yaml --id mem-1 --action curated
 ```
+
+### Portable JSONL import/export
+
+Use canonical JSONL for migrations, audits, and cross-VPS moves:
+
+```bash
+./bin/engramctl export --config ./configs/example.yaml --out ./data/engram-export.jsonl
+./bin/engramctl import --config ./configs/example.yaml --file ./data/engram-export.jsonl --dry-run
+./bin/engramctl import --config ./configs/example.yaml --file ./data/engram-export.jsonl --reindex=true
+```
+
+JSONL records use `kind: "event"` or `kind: "memory_object"` with `version: "engram.portable.v1"`. Imports validate events and memory objects, skip duplicates, and reindex imported memory into Qdrant by default when Qdrant is configured.
 
 For JSON-heavy commands, use `--file payload.json` or `--file -` for stdin instead of `--json`.
 

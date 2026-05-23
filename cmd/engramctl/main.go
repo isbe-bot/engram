@@ -17,10 +17,13 @@ import (
 
 	"github.com/isbe-bot/engram/internal/config"
 	"github.com/isbe-bot/engram/internal/embedding"
+	"github.com/isbe-bot/engram/internal/events"
 	"github.com/isbe-bot/engram/internal/index"
+	"github.com/isbe-bot/engram/internal/models"
 	"github.com/isbe-bot/engram/internal/quality"
 	qdrantstore "github.com/isbe-bot/engram/internal/storage/qdrant"
 	sqlitestore "github.com/isbe-bot/engram/internal/storage/sqlite"
+	"github.com/isbe-bot/engram/pkg/contracts"
 )
 
 func main() {
@@ -37,6 +40,19 @@ func main() {
 	case "status", "migrate", "quality", "report", "reindex":
 		_ = fs.Parse(os.Args[2:])
 		runLocalCommand(cmd, *configPath)
+	case "export":
+		out := fs.String("out", "-", "output JSONL path; use - for stdout")
+		includeEvents := fs.Bool("include-events", true, "include ingested events")
+		includeMemory := fs.Bool("include-memory", true, "include memory objects")
+		limit := fs.Int("limit", 100000, "maximum records per kind")
+		_ = fs.Parse(os.Args[2:])
+		runExport(*configPath, *out, *includeMemory, *includeEvents, *limit)
+	case "import":
+		file := fs.String("file", "-", "input JSONL path; use - for stdin")
+		dryRun := fs.Bool("dry-run", false, "validate records without writing")
+		reindex := fs.Bool("reindex", true, "index imported memory objects when Qdrant is configured")
+		_ = fs.Parse(os.Args[2:])
+		runImport(*configPath, *file, *dryRun, *reindex)
 	case "init":
 		dataDir := fs.String("data-dir", "./data", "directory for ENGRAM runtime data")
 		qdrantURL := fs.String("qdrant-url", "http://127.0.0.1:6333", "Qdrant URL; use empty string to disable semantic indexing")
@@ -149,7 +165,17 @@ func main() {
 }
 
 func usage() {
-	fmt.Println("usage: engramctl <init|status|migrate|quality|report|reindex|backup|restore|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
+	fmt.Println("usage: engramctl <init|status|migrate|quality|report|reindex|export|import|backup|restore|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
+}
+
+const portableVersion = "engram.portable.v1"
+
+type portableRecord struct {
+	Kind     string                      `json:"kind"`
+	Version  string                      `json:"version"`
+	Event    *events.Envelope            `json:"event,omitempty"`
+	Memory   *models.MemoryObject        `json:"memory,omitempty"`
+	Envelope *contracts.MutationEnvelope `json:"envelope,omitempty"`
 }
 
 type initOptions struct {
@@ -303,6 +329,180 @@ func runLocalCommand(cmd, configPath string) {
 	case "reindex":
 		runReindex(cfg, store)
 	}
+}
+
+func runExport(configPath, outPath string, includeMemory, includeEvents bool, limit int) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+	store, err := sqlitestore.New(cfg.Storage.SQLitePath)
+	if err != nil {
+		log.Fatalf("init sqlite store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		log.Fatalf("migrations: %v", err)
+	}
+
+	var out io.Writer = os.Stdout
+	var file *os.File
+	if strings.TrimSpace(outPath) != "" && strings.TrimSpace(outPath) != "-" {
+		if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+			log.Fatalf("create output dir: %v", err)
+		}
+		file, err = os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err != nil {
+			log.Fatalf("open output: %v", err)
+		}
+		defer func() { _ = file.Close() }()
+		out = file
+	}
+	enc := json.NewEncoder(out)
+	count := 0
+
+	if includeEvents {
+		eventsOut, err := store.ListEvents(context.Background(), limit)
+		if err != nil {
+			log.Fatalf("list events: %v", err)
+		}
+		for _, env := range eventsOut {
+			rec := portableRecord{Kind: "event", Version: portableVersion, Event: &env}
+			if err := enc.Encode(rec); err != nil {
+				log.Fatalf("write event record: %v", err)
+			}
+			count++
+		}
+	}
+	if includeMemory {
+		objects, err := store.ListMemoryObjects(context.Background(), limit)
+		if err != nil {
+			log.Fatalf("list memory objects: %v", err)
+		}
+		for _, obj := range objects {
+			env := contracts.MutationEnvelope{ActorID: "engram-export", MutationID: "export-" + obj.ObjectID, Signature: "portable-jsonl"}
+			rec := portableRecord{Kind: "memory_object", Version: portableVersion, Memory: &obj, Envelope: &env}
+			if err := enc.Encode(rec); err != nil {
+				log.Fatalf("write memory record: %v", err)
+			}
+			count++
+		}
+	}
+	if file != nil {
+		writePrettyJSON(map[string]any{"status": "ok", "records": count, "out": outPath})
+	}
+}
+
+func runImport(configPath, filePath string, dryRun, doReindex bool) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+	store, err := sqlitestore.New(cfg.Storage.SQLitePath)
+	if err != nil {
+		log.Fatalf("init sqlite store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		log.Fatalf("migrations: %v", err)
+	}
+
+	var in io.Reader = os.Stdin
+	var file *os.File
+	if strings.TrimSpace(filePath) != "" && strings.TrimSpace(filePath) != "-" {
+		file, err = os.Open(filePath)
+		if err != nil {
+			log.Fatalf("open import file: %v", err)
+		}
+		defer func() { _ = file.Close() }()
+		in = file
+	}
+
+	dec := json.NewDecoder(in)
+	stats := map[string]int{"records": 0, "events": 0, "memory_objects": 0, "skipped": 0}
+	importedMemory := make([]models.MemoryObject, 0)
+	for {
+		var rec portableRecord
+		if err := dec.Decode(&rec); err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Fatalf("decode JSONL record %d: %v", stats["records"]+1, err)
+		}
+		stats["records"]++
+		if rec.Version != portableVersion {
+			log.Fatalf("record %d has unsupported version %q", stats["records"], rec.Version)
+		}
+		switch rec.Kind {
+		case "event":
+			if rec.Event == nil {
+				log.Fatalf("record %d missing event", stats["records"])
+			}
+			env := *rec.Event
+			if err := env.NormalizeAndValidate(time.Now().UTC()); err != nil {
+				log.Fatalf("validate event %s: %v", env.EventID, err)
+			}
+			if dryRun {
+				stats["events"]++
+				continue
+			}
+			if err := store.InsertEvent(context.Background(), env); err != nil {
+				if strings.Contains(strings.ToLower(err.Error()), "already exists") {
+					stats["skipped"]++
+					continue
+				}
+				log.Fatalf("import event %s: %v", env.EventID, err)
+			}
+			stats["events"]++
+		case "memory_object":
+			if rec.Memory == nil {
+				log.Fatalf("record %d missing memory", stats["records"])
+			}
+			obj := *rec.Memory
+			if err := obj.NormalizeAndValidate(time.Now().UTC()); err != nil {
+				log.Fatalf("validate memory %s: %v", obj.ObjectID, err)
+			}
+			env := contracts.MutationEnvelope{ActorID: "engram-import", MutationID: "import-" + obj.ObjectID, Signature: "portable-jsonl"}
+			if rec.Envelope != nil {
+				env = *rec.Envelope
+			}
+			if dryRun {
+				stats["memory_objects"]++
+				continue
+			}
+			created, err := store.CreateMemoryObject(context.Background(), obj, env)
+			if err != nil {
+				if strings.Contains(strings.ToLower(err.Error()), "already exists") {
+					stats["skipped"]++
+					continue
+				}
+				log.Fatalf("import memory %s: %v", obj.ObjectID, err)
+			}
+			importedMemory = append(importedMemory, created)
+			stats["memory_objects"]++
+		default:
+			log.Fatalf("record %d has unsupported kind %q", stats["records"], rec.Kind)
+		}
+	}
+	indexedCount := 0
+	if !dryRun && doReindex && strings.TrimSpace(cfg.Storage.QdrantURL) != "" && len(importedMemory) > 0 {
+		qdrantClient, err := qdrantstore.New(cfg.Storage.QdrantURL, cfg.Storage.QdrantCollection)
+		if err != nil {
+			log.Fatalf("init qdrant client: %v", err)
+		}
+		indexSvc := index.NewService(qdrantClient, embedding.NewHashProvider(embedding.HashVectorSize), embedding.HashVectorSize)
+		if err := indexSvc.Ensure(context.Background()); err != nil {
+			log.Fatalf("ensure qdrant collection: %v", err)
+		}
+		for _, obj := range importedMemory {
+			if err := indexSvc.IndexMemory(context.Background(), obj); err != nil {
+				log.Fatalf("index imported memory %s: %v", obj.ObjectID, err)
+			}
+			indexedCount++
+		}
+	}
+	stats["indexed"] = indexedCount
+	writePrettyJSON(map[string]any{"status": "ok", "dry_run": dryRun, "stats": stats})
 }
 
 func runBackup(configPath, outPath string) {
