@@ -257,3 +257,19 @@ Verification:
 - CLI smoke with live `engramd` passed for health, ingest, curate, get, search, correct, history, and quality.
 - Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.
 
+### 2026-05-23 — Milestone 2 slice A
+
+Completed:
+
+- Added canonical memory type validation for `fact`, `preference`, `decision`, `project_context`, `contact_context`, `workflow_pattern`, `lesson`, and `report_insight`.
+- Added scope validation with `local`, `agent`, `project`, `client`, and `global`.
+- Added migration `0004_memory_contract_fields.sql` for `scope` and `provenance_hash`.
+- Added deterministic SHA-256 provenance hash generation for memory objects.
+- Updated SQLite create/get/search/correct paths to persist and return contract fields.
+- Added tests for contract validation, provenance hashing, and migration-created contract columns.
+- Updated README examples to include valid source refs and governance envelopes.
+
+Verification:
+
+- Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.
+

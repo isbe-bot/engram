@@ -53,21 +53,24 @@ curl -s -X POST http://127.0.0.1:8787/v1/memory/curate \
     "type":"decision",
     "content":"Use Go for ENGRAM core",
     "source_refs":["adr:0009"],
-    "confidence":0.95,
-    "classification":"product"
+    "confidence":0.85,
+    "classification":"product",
+    "scope":"local",
+    "envelope":{"actor_id":"operator","mutation_id":"mut-001","signature":"sig-001"}
   }'
 
 curl -s -X POST http://127.0.0.1:8787/v1/memory/mem-1/correct \
   -H 'content-type: application/json' \
   -d '{
     "content":"Use Go + SQLite for ENGRAM core",
-    "reason":"more precise",
-    "source_refs":["adr:0009","blueprint:v1"]
+    "reason":"Clarify storage architecture",
+    "source_refs":["adr:0009","spec:blueprint-v1"],
+    "envelope":{"actor_id":"operator","mutation_id":"mut-002","signature":"sig-002"}
   }'
 
 curl -s -X POST http://127.0.0.1:8787/v1/memory/mem-1/deprecate \
   -H 'content-type: application/json' \
-  -d '{"reason":"superseded by revised architecture"}'
+  -d '{"reason":"Superseded by revised architecture","envelope":{"actor_id":"operator","mutation_id":"mut-003","signature":"sig-003"}}'
 
 curl -s 'http://127.0.0.1:8787/v1/memory/search?q=Go&status=accepted&min_confidence=0.9&limit=10&include_events=true'
 

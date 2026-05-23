@@ -1,6 +1,8 @@
 package models
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -21,6 +23,8 @@ type MemoryObject struct {
 	SourceRefs     []string `json:"source_refs"`
 	Confidence     float64  `json:"confidence"`
 	Classification string   `json:"classification"`
+	Scope          string   `json:"scope"`
+	ProvenanceHash string   `json:"provenance_hash"`
 	Status         string   `json:"status"`
 	CreatedAt      string   `json:"created_at"`
 	UpdatedAt      string   `json:"updated_at"`
@@ -31,11 +35,17 @@ func (m *MemoryObject) NormalizeAndValidate(now time.Time) error {
 	m.Type = strings.TrimSpace(m.Type)
 	m.SchemaVer = strings.TrimSpace(m.SchemaVer)
 	m.Content = strings.TrimSpace(m.Content)
-	m.Classification = strings.TrimSpace(m.Classification)
+	m.Classification = strings.TrimSpace(strings.ToLower(m.Classification))
+	m.Scope = strings.TrimSpace(strings.ToLower(m.Scope))
+	m.ProvenanceHash = strings.TrimSpace(m.ProvenanceHash)
 	m.Status = strings.TrimSpace(m.Status)
 
 	if m.Type == "" {
 		return fmt.Errorf("type is required")
+	}
+	m.Type = strings.TrimSpace(strings.ToLower(m.Type))
+	if err := policy.ValidateType(m.Type); err != nil {
+		return err
 	}
 	if m.Content == "" {
 		return fmt.Errorf("content is required")
@@ -62,6 +72,15 @@ func (m *MemoryObject) NormalizeAndValidate(now time.Time) error {
 	if err := policy.ValidateClassification(m.Classification); err != nil {
 		return err
 	}
+	if m.Scope == "" {
+		m.Scope = "local"
+	}
+	if err := policy.ValidateScope(m.Scope); err != nil {
+		return err
+	}
+	if m.ProvenanceHash == "" {
+		m.ProvenanceHash = m.ComputeProvenanceHash()
+	}
 	if m.Status == "" {
 		m.Status = MemoryStatusAccepted
 	}
@@ -78,4 +97,21 @@ func (m *MemoryObject) NormalizeAndValidate(now time.Time) error {
 	}
 
 	return nil
+}
+
+func (m MemoryObject) ComputeProvenanceHash() string {
+	refs := append([]string(nil), m.SourceRefs...)
+	for i := range refs {
+		refs[i] = strings.TrimSpace(refs[i])
+	}
+	raw := strings.Join([]string{
+		strings.TrimSpace(strings.ToLower(m.Type)),
+		strings.TrimSpace(m.SchemaVer),
+		strings.TrimSpace(m.Content),
+		strings.Join(refs, ","),
+		strings.TrimSpace(strings.ToLower(m.Classification)),
+		strings.TrimSpace(strings.ToLower(m.Scope)),
+	}, "|")
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
 }

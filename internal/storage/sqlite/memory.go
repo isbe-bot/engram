@@ -21,6 +21,9 @@ func (s *Store) CreateMemoryObject(ctx context.Context, m models.MemoryObject, e
 	if s == nil || s.db == nil {
 		return models.MemoryObject{}, fmt.Errorf("sqlite store is not initialized")
 	}
+	if err := m.NormalizeAndValidate(time.Now().UTC()); err != nil {
+		return models.MemoryObject{}, err
+	}
 
 	sourceRefsJSON, err := json.Marshal(m.SourceRefs)
 	if err != nil {
@@ -30,10 +33,10 @@ func (s *Store) CreateMemoryObject(ctx context.Context, m models.MemoryObject, e
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO memory_objects (
 			object_id, type, schema_version, content, source_refs_json,
-			confidence, classification, status, created_at, updated_at
+			confidence, classification, scope, provenance_hash, status, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, m.ObjectID, m.Type, m.SchemaVer, m.Content, string(sourceRefsJSON), m.Confidence, m.Classification, m.Status, m.CreatedAt, m.UpdatedAt)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, m.ObjectID, m.Type, m.SchemaVer, m.Content, string(sourceRefsJSON), m.Confidence, m.Classification, m.Scope, m.ProvenanceHash, m.Status, m.CreatedAt, m.UpdatedAt)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return models.MemoryObject{}, fmt.Errorf("memory object already exists: %s", m.ObjectID)
@@ -73,6 +76,7 @@ func (s *Store) CorrectMemoryObject(ctx context.Context, objectID, content, reas
 			obj.SourceRefs = clean
 		}
 	}
+	obj.ProvenanceHash = obj.ComputeProvenanceHash()
 	obj.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
 	sourceRefsJSON, err := json.Marshal(obj.SourceRefs)
@@ -82,9 +86,9 @@ func (s *Store) CorrectMemoryObject(ctx context.Context, objectID, content, reas
 
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE memory_objects
-		SET content = ?, source_refs_json = ?, updated_at = ?
+		SET content = ?, source_refs_json = ?, provenance_hash = ?, updated_at = ?
 		WHERE object_id = ?
-	`, obj.Content, string(sourceRefsJSON), obj.UpdatedAt, obj.ObjectID)
+	`, obj.Content, string(sourceRefsJSON), obj.ProvenanceHash, obj.UpdatedAt, obj.ObjectID)
 	if err != nil {
 		return models.MemoryObject{}, fmt.Errorf("correct memory object: %w", err)
 	}
@@ -140,10 +144,10 @@ func (s *Store) GetMemoryObject(ctx context.Context, objectID string) (models.Me
 	)
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT object_id, type, schema_version, content, source_refs_json,
-		       confidence, classification, status, created_at, updated_at
+		       confidence, classification, scope, provenance_hash, status, created_at, updated_at
 		FROM memory_objects
 		WHERE object_id = ?
-	`, objectID).Scan(&obj.ObjectID, &obj.Type, &obj.SchemaVer, &obj.Content, &sourceRefsJSON, &obj.Confidence, &obj.Classification, &obj.Status, &obj.CreatedAt, &obj.UpdatedAt); err != nil {
+	`, objectID).Scan(&obj.ObjectID, &obj.Type, &obj.SchemaVer, &obj.Content, &sourceRefsJSON, &obj.Confidence, &obj.Classification, &obj.Scope, &obj.ProvenanceHash, &obj.Status, &obj.CreatedAt, &obj.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return models.MemoryObject{}, fmt.Errorf("memory object not found: %s", objectID)
 		}
@@ -194,7 +198,7 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 
 	sqlText := `
 		SELECT object_id, type, schema_version, content, source_refs_json,
-		       confidence, classification, status, created_at, updated_at
+		       confidence, classification, scope, provenance_hash, status, created_at, updated_at
 		FROM memory_objects
 	`
 	if len(filters) > 0 {
@@ -220,12 +224,14 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 			sourceRefsJSON string
 			confidence     float64
 			classification string
+			scope          string
+			provenanceHash string
 			status         string
 			createdAt      string
 			updatedAt      string
 			sourceRefs     []string
 		)
-		if err := rows.Scan(&objID, &typeName, &schemaVersion, &content, &sourceRefsJSON, &confidence, &classification, &status, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&objID, &typeName, &schemaVersion, &content, &sourceRefsJSON, &confidence, &classification, &scope, &provenanceHash, &status, &createdAt, &updatedAt); err != nil {
 			return nil, "", fmt.Errorf("scan memory object result: %w", err)
 		}
 		if sourceRefsJSON != "" {
@@ -249,6 +255,8 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 			"source_refs":      sourceRefs,
 			"confidence":       confidence,
 			"classification":   classification,
+			"scope":            scope,
+			"provenance_hash":  provenanceHash,
 			"status":           status,
 			"created_at":       createdAt,
 			"updated_at":       updatedAt,

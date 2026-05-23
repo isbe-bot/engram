@@ -13,6 +13,7 @@ type MemoryWriteRequest struct {
 	SourceRefs     []string         `json:"source_refs"`
 	Confidence     float64          `json:"confidence,omitempty"`
 	Classification string           `json:"classification,omitempty"`
+	Scope          string           `json:"scope,omitempty"`
 	SchemaVersion  string           `json:"schema_version,omitempty"`
 	Envelope       MutationEnvelope `json:"envelope,omitempty"`
 }

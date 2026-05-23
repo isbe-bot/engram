@@ -5,6 +5,25 @@ import (
 	"strings"
 )
 
+var allowedTypes = map[string]struct{}{
+	"fact":             {},
+	"preference":       {},
+	"decision":         {},
+	"project_context":  {},
+	"contact_context":  {},
+	"workflow_pattern": {},
+	"lesson":           {},
+	"report_insight":   {},
+}
+
+var allowedScopes = map[string]struct{}{
+	"local":   {},
+	"agent":   {},
+	"project": {},
+	"client":  {},
+	"global":  {},
+}
+
 var allowedClassifications = map[string]struct{}{
 	"general":       {},
 	"product":       {},
@@ -21,6 +40,28 @@ var allowedSourceRefPrefixes = []string{
 	"task:",
 	"event:",
 	"doc:",
+}
+
+func ValidateType(typeName string) error {
+	t := strings.TrimSpace(strings.ToLower(typeName))
+	if t == "" {
+		return fmt.Errorf("type is required")
+	}
+	if _, ok := allowedTypes[t]; !ok {
+		return fmt.Errorf("type is not allowed: %s", typeName)
+	}
+	return nil
+}
+
+func ValidateScope(scope string) error {
+	s := strings.TrimSpace(strings.ToLower(scope))
+	if s == "" {
+		return fmt.Errorf("scope is required")
+	}
+	if _, ok := allowedScopes[s]; !ok {
+		return fmt.Errorf("scope is not allowed: %s", scope)
+	}
+	return nil
 }
 
 func ValidateClassification(classification string) error {

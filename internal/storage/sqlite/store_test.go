@@ -16,6 +16,43 @@ func testEnv(id string) contracts.MutationEnvelope {
 	return contracts.MutationEnvelope{ActorID: "tester", MutationID: id, Signature: "sig-" + id}
 }
 
+func TestApplyMigrationsCreatesContractColumns(t *testing.T) {
+	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	rows, err := store.db.Query(`PRAGMA table_info(memory_objects)`)
+	if err != nil {
+		t.Fatalf("table info: %v", err)
+	}
+	defer rows.Close()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, typeName string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typeName, &notNull, &defaultValue, &pk); err != nil {
+			t.Fatalf("scan table info: %v", err)
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate table info: %v", err)
+	}
+	for _, required := range []string{"scope", "provenance_hash"} {
+		if !columns[required] {
+			t.Fatalf("expected memory_objects.%s column", required)
+		}
+	}
+}
+
 func TestStoreInsertAndSearch(t *testing.T) {
 	ctx := context.Background()
 	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))
@@ -96,6 +133,12 @@ func TestMemoryObjectLifecycle(t *testing.T) {
 	if created.ObjectID != obj.ObjectID {
 		t.Fatalf("unexpected object id: %s", created.ObjectID)
 	}
+	if created.Scope != "local" {
+		t.Fatalf("expected default scope local, got %q", created.Scope)
+	}
+	if created.ProvenanceHash == "" {
+		t.Fatal("expected provenance hash")
+	}
 
 	if _, err := store.CreateMemoryObject(ctx, obj, testEnv("mut-2")); err == nil {
 		t.Fatal("expected duplicate memory object error")
@@ -107,6 +150,9 @@ func TestMemoryObjectLifecycle(t *testing.T) {
 	}
 	if corrected.Content != "Use Go + SQLite for ENGRAM core" {
 		t.Fatalf("unexpected corrected content: %s", corrected.Content)
+	}
+	if corrected.ProvenanceHash == created.ProvenanceHash {
+		t.Fatal("expected correction to update provenance hash")
 	}
 
 	deprecated, err := store.DeprecateMemoryObject(ctx, obj.ObjectID, "superseded by v2 policy", testEnv("mut-4"))

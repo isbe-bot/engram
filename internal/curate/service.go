@@ -37,6 +37,7 @@ func (s *Service) Curate(ctx context.Context, req contracts.MemoryWriteRequest) 
 		SourceRefs:     req.SourceRefs,
 		Confidence:     req.Confidence,
 		Classification: req.Classification,
+		Scope:          req.Scope,
 		Status:         models.MemoryStatusAccepted,
 		CreatedAt:      now.UTC().Format(time.RFC3339),
 		UpdatedAt:      now.UTC().Format(time.RFC3339),

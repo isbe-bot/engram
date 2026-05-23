@@ -2,6 +2,24 @@ package policy
 
 import "testing"
 
+func TestValidateType(t *testing.T) {
+	if err := ValidateType("decision"); err != nil {
+		t.Fatalf("expected decision type to be valid: %v", err)
+	}
+	if err := ValidateType("random_note"); err == nil {
+		t.Fatal("expected invalid type error")
+	}
+}
+
+func TestValidateScope(t *testing.T) {
+	if err := ValidateScope("client"); err != nil {
+		t.Fatalf("expected client scope to be valid: %v", err)
+	}
+	if err := ValidateScope("internet"); err == nil {
+		t.Fatal("expected invalid scope error")
+	}
+}
+
 func TestValidateClassification(t *testing.T) {
 	if err := ValidateClassification("product"); err != nil {
 		t.Fatalf("expected product classification to be valid: %v", err)
