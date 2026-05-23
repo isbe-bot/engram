@@ -2,7 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -12,9 +14,10 @@ import (
 	"github.com/aileun/engram/internal/citations"
 	"github.com/aileun/engram/internal/models"
 	"github.com/aileun/engram/internal/retrieve"
+	"github.com/aileun/engram/pkg/contracts"
 )
 
-func (s *Store) CreateMemoryObject(ctx context.Context, m models.MemoryObject) (models.MemoryObject, error) {
+func (s *Store) CreateMemoryObject(ctx context.Context, m models.MemoryObject, env contracts.MutationEnvelope) (models.MemoryObject, error) {
 	if s == nil || s.db == nil {
 		return models.MemoryObject{}, fmt.Errorf("sqlite store is not initialized")
 	}
@@ -38,14 +41,14 @@ func (s *Store) CreateMemoryObject(ctx context.Context, m models.MemoryObject) (
 		return models.MemoryObject{}, fmt.Errorf("create memory object: %w", err)
 	}
 
-	if err := s.appendMemoryObjectEvent(ctx, m.ObjectID, "curated", "", map[string]any{"type": m.Type}); err != nil {
+	if err := s.appendMemoryObjectEvent(ctx, m.ObjectID, "curated", "", map[string]any{"type": m.Type}, env); err != nil {
 		return models.MemoryObject{}, err
 	}
 
 	return m, nil
 }
 
-func (s *Store) CorrectMemoryObject(ctx context.Context, objectID, content, reason string, sourceRefs []string) (models.MemoryObject, error) {
+func (s *Store) CorrectMemoryObject(ctx context.Context, objectID, content, reason string, sourceRefs []string, env contracts.MutationEnvelope) (models.MemoryObject, error) {
 	obj, err := s.GetMemoryObject(ctx, objectID)
 	if err != nil {
 		return models.MemoryObject{}, err
@@ -86,14 +89,14 @@ func (s *Store) CorrectMemoryObject(ctx context.Context, objectID, content, reas
 		return models.MemoryObject{}, fmt.Errorf("correct memory object: %w", err)
 	}
 
-	if err := s.appendMemoryObjectEvent(ctx, obj.ObjectID, "corrected", reason, map[string]any{"source_refs": obj.SourceRefs}); err != nil {
+	if err := s.appendMemoryObjectEvent(ctx, obj.ObjectID, "corrected", reason, map[string]any{"source_refs": obj.SourceRefs}, env); err != nil {
 		return models.MemoryObject{}, err
 	}
 
 	return obj, nil
 }
 
-func (s *Store) DeprecateMemoryObject(ctx context.Context, objectID, reason string) (models.MemoryObject, error) {
+func (s *Store) DeprecateMemoryObject(ctx context.Context, objectID, reason string, env contracts.MutationEnvelope) (models.MemoryObject, error) {
 	obj, err := s.GetMemoryObject(ctx, objectID)
 	if err != nil {
 		return models.MemoryObject{}, err
@@ -114,7 +117,7 @@ func (s *Store) DeprecateMemoryObject(ctx context.Context, objectID, reason stri
 		return models.MemoryObject{}, fmt.Errorf("deprecate memory object: %w", err)
 	}
 
-	if err := s.appendMemoryObjectEvent(ctx, obj.ObjectID, "deprecated", reason, map[string]any{}); err != nil {
+	if err := s.appendMemoryObjectEvent(ctx, obj.ObjectID, "deprecated", reason, map[string]any{}, env); err != nil {
 		return models.MemoryObject{}, err
 	}
 
@@ -290,7 +293,7 @@ func (s *Store) ListMemoryObjectEvents(ctx context.Context, objectID, action str
 	}
 
 	sqlText := `
-		SELECT id, action, reason, payload_json, created_at
+		SELECT id, action, reason, payload_json, created_at, actor_id, mutation_id, signature, prev_hash, event_hash
 		FROM memory_object_events
 		WHERE ` + strings.Join(filters, " AND ") + `
 		ORDER BY id DESC
@@ -307,13 +310,18 @@ func (s *Store) ListMemoryObjectEvents(ctx context.Context, objectID, action str
 	for rows.Next() {
 		var (
 			id         int
-			action     string
+			actionName string
 			reason     string
 			payload    string
 			createdAt  string
+			actorID    string
+			mutationID string
+			signature  string
+			prevHash   string
+			eventHash  string
 			payloadMap map[string]any
 		)
-		if err := rows.Scan(&id, &action, &reason, &payload, &createdAt); err != nil {
+		if err := rows.Scan(&id, &actionName, &reason, &payload, &createdAt, &actorID, &mutationID, &signature, &prevHash, &eventHash); err != nil {
 			return nil, fmt.Errorf("scan memory object event: %w", err)
 		}
 		if payload != "" {
@@ -323,12 +331,17 @@ func (s *Store) ListMemoryObjectEvents(ctx context.Context, objectID, action str
 			payloadMap = map[string]any{}
 		}
 		events = append(events, map[string]any{
-			"id":         id,
-			"object_id":  objectID,
-			"action":     action,
-			"reason":     reason,
-			"payload":    payloadMap,
-			"created_at": createdAt,
+			"id":          id,
+			"object_id":   objectID,
+			"action":      actionName,
+			"reason":      reason,
+			"payload":     payloadMap,
+			"created_at":  createdAt,
+			"actor_id":    actorID,
+			"mutation_id": mutationID,
+			"signature":   signature,
+			"prev_hash":   prevHash,
+			"event_hash":  eventHash,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -349,15 +362,37 @@ func (s *Store) MemoryObjectCount(ctx context.Context) (int, error) {
 	return c, nil
 }
 
-func (s *Store) appendMemoryObjectEvent(ctx context.Context, objectID, action, reason string, payload map[string]any) error {
+func (s *Store) appendMemoryObjectEvent(ctx context.Context, objectID, action, reason string, payload map[string]any, env contracts.MutationEnvelope) error {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal memory object event payload: %w", err)
 	}
+
+	prevHash := ""
+	_ = s.db.QueryRowContext(ctx, `SELECT event_hash FROM memory_object_events WHERE object_id = ? ORDER BY id DESC LIMIT 1`, objectID).Scan(&prevHash)
+
+	createdAt := time.Now().UTC().Format(time.RFC3339)
+	raw := strings.Join([]string{
+		strings.TrimSpace(objectID),
+		strings.TrimSpace(action),
+		strings.TrimSpace(reason),
+		string(payloadJSON),
+		strings.TrimSpace(env.ActorID),
+		strings.TrimSpace(env.MutationID),
+		strings.TrimSpace(env.Signature),
+		createdAt,
+		strings.TrimSpace(prevHash),
+	}, "|")
+	h := sha256.Sum256([]byte(raw))
+	eventHash := hex.EncodeToString(h[:])
+
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO memory_object_events (object_id, action, reason, payload_json, created_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, objectID, action, reason, string(payloadJSON), time.Now().UTC().Format(time.RFC3339))
+		INSERT INTO memory_object_events (
+			object_id, action, reason, payload_json, created_at,
+			actor_id, mutation_id, signature, prev_hash, event_hash
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, objectID, action, reason, string(payloadJSON), createdAt, env.ActorID, env.MutationID, env.Signature, prevHash, eventHash)
 	if err != nil {
 		return fmt.Errorf("insert memory object event: %w", err)
 	}

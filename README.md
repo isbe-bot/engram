@@ -23,7 +23,11 @@ make test
 - `POST /v1/memory/{object_id}/correct` (supports `force=true` for protected high-confidence memory)
 - `POST /v1/memory/{object_id}/deprecate` (supports `force=true` for protected high-confidence memory)
 - `GET /v1/memory/{object_id}/history?limit=<n>&action=<curated|corrected|deprecated>&before=<event_id>`
-- `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>&cursor=<offset>&include_events=<true|false>`
+
+Mutation endpoints require signed envelope fields:
+- `envelope.actor_id`
+- `envelope.mutation_id`
+- `envelope.signature`- `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>&cursor=<offset>&include_events=<true|false>`
 
 ### Example ingest + curate + governance + search
 
@@ -76,6 +80,7 @@ Governance behavior includes quality guardrails:
 - correction/deprecation reasons must be sufficiently descriptive (not vague one-word reasons like `fix`)
 - source refs must use approved prefixes (`adr:`, `chat:`, `spec:`, `meeting:`, `task:`, `event:`, `doc:`)
 - high-confidence memories (`confidence >= 0.90`) are immutable unless `force=true` is explicitly provided
+- memory object events include hash-chain audit fields (`prev_hash`, `event_hash`) for tamper-evidence
 
 ## Project layout
 ```text

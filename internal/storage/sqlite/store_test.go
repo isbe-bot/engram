@@ -9,7 +9,12 @@ import (
 	"github.com/aileun/engram/internal/events"
 	"github.com/aileun/engram/internal/models"
 	"github.com/aileun/engram/internal/retrieve"
+	"github.com/aileun/engram/pkg/contracts"
 )
+
+func testEnv(id string) contracts.MutationEnvelope {
+	return contracts.MutationEnvelope{ActorID: "tester", MutationID: id, Signature: "sig-" + id}
+}
 
 func TestStoreInsertAndSearch(t *testing.T) {
 	ctx := context.Background()
@@ -84,7 +89,7 @@ func TestMemoryObjectLifecycle(t *testing.T) {
 		UpdatedAt:      now,
 	}
 
-	created, err := store.CreateMemoryObject(ctx, obj)
+	created, err := store.CreateMemoryObject(ctx, obj, testEnv("mut-1"))
 	if err != nil {
 		t.Fatalf("create memory object: %v", err)
 	}
@@ -92,11 +97,11 @@ func TestMemoryObjectLifecycle(t *testing.T) {
 		t.Fatalf("unexpected object id: %s", created.ObjectID)
 	}
 
-	if _, err := store.CreateMemoryObject(ctx, obj); err == nil {
+	if _, err := store.CreateMemoryObject(ctx, obj, testEnv("mut-2")); err == nil {
 		t.Fatal("expected duplicate memory object error")
 	}
 
-	corrected, err := store.CorrectMemoryObject(ctx, obj.ObjectID, "Use Go + SQLite for ENGRAM core", "clarified architecture", []string{"adr:0009"})
+	corrected, err := store.CorrectMemoryObject(ctx, obj.ObjectID, "Use Go + SQLite for ENGRAM core", "clarified architecture", []string{"adr:0009"}, testEnv("mut-3"))
 	if err != nil {
 		t.Fatalf("correct memory object: %v", err)
 	}
@@ -104,7 +109,7 @@ func TestMemoryObjectLifecycle(t *testing.T) {
 		t.Fatalf("unexpected corrected content: %s", corrected.Content)
 	}
 
-	deprecated, err := store.DeprecateMemoryObject(ctx, obj.ObjectID, "superseded by v2 policy")
+	deprecated, err := store.DeprecateMemoryObject(ctx, obj.ObjectID, "superseded by v2 policy", testEnv("mut-4"))
 	if err != nil {
 		t.Fatalf("deprecate memory object: %v", err)
 	}
@@ -137,7 +142,7 @@ func TestSearchMemoryObjectsWithFiltersAndCitations(t *testing.T) {
 		Status:         models.MemoryStatusAccepted,
 		CreatedAt:      now,
 		UpdatedAt:      now,
-	})
+	}, testEnv("mut-a"))
 	if err != nil {
 		t.Fatalf("create mem-a: %v", err)
 	}
@@ -153,7 +158,7 @@ func TestSearchMemoryObjectsWithFiltersAndCitations(t *testing.T) {
 		Status:         models.MemoryStatusDeprecated,
 		CreatedAt:      now,
 		UpdatedAt:      now,
-	})
+	}, testEnv("mut-b"))
 	if err != nil {
 		t.Fatalf("create mem-b: %v", err)
 	}
@@ -225,10 +230,10 @@ func TestListMemoryObjectEventsFilters(t *testing.T) {
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
-	if _, err := store.CreateMemoryObject(ctx, obj); err != nil {
+	if _, err := store.CreateMemoryObject(ctx, obj, testEnv("mut-h1")); err != nil {
 		t.Fatalf("create memory object: %v", err)
 	}
-	if _, err := store.CorrectMemoryObject(ctx, obj.ObjectID, "Use strict policy checks", "Clarify enforcement details", []string{"adr:0011", "spec:m6"}); err != nil {
+	if _, err := store.CorrectMemoryObject(ctx, obj.ObjectID, "Use strict policy checks", "Clarify enforcement details", []string{"adr:0011", "spec:m6"}, testEnv("mut-h2")); err != nil {
 		t.Fatalf("correct memory object: %v", err)
 	}
 
@@ -249,5 +254,12 @@ func TestListMemoryObjectEventsFilters(t *testing.T) {
 	}
 	if correctedOnly[0]["action"] != "corrected" {
 		t.Fatalf("unexpected action: %v", correctedOnly[0]["action"])
+	}
+
+	if correctedOnly[0]["event_hash"] == "" {
+		t.Fatal("expected event_hash on corrected event")
+	}
+	if correctedOnly[0]["prev_hash"] == "" {
+		t.Fatal("expected prev_hash on corrected event")
 	}
 }

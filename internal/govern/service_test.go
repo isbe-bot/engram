@@ -21,19 +21,21 @@ func (f fakeStore) GetMemoryObject(ctx context.Context, objectID string) (models
 	return f.obj, nil
 }
 
-func (f fakeStore) CorrectMemoryObject(ctx context.Context, objectID, content, reason string, sourceRefs []string) (models.MemoryObject, error) {
+func (f fakeStore) CorrectMemoryObject(ctx context.Context, objectID, content, reason string, sourceRefs []string, env contracts.MutationEnvelope) (models.MemoryObject, error) {
 	_ = ctx
 	_ = reason
 	_ = sourceRefs
+	_ = env
 	obj := f.obj
 	obj.ObjectID = objectID
 	obj.Content = content
 	return obj, nil
 }
 
-func (f fakeStore) DeprecateMemoryObject(ctx context.Context, objectID, reason string) (models.MemoryObject, error) {
+func (f fakeStore) DeprecateMemoryObject(ctx context.Context, objectID, reason string, env contracts.MutationEnvelope) (models.MemoryObject, error) {
 	_ = ctx
 	_ = reason
+	_ = env
 	obj := f.obj
 	obj.ObjectID = objectID
 	obj.Status = models.MemoryStatusDeprecated
@@ -52,7 +54,7 @@ func TestReasonQualityGuard(t *testing.T) {
 	if _, err := svc.Correct(context.Background(), "mem-1", contracts.MemoryCorrectRequest{Content: "x", Reason: "fix"}); err == nil {
 		t.Fatal("expected reason quality error")
 	}
-	if _, err := svc.Deprecate(context.Background(), "mem-1", contracts.MemoryDeprecateRequest{Reason: "obsolete due to revised policy"}); err != nil {
+	if _, err := svc.Deprecate(context.Background(), "mem-1", contracts.MemoryDeprecateRequest{Reason: "obsolete due to revised policy", Envelope: contracts.MutationEnvelope{ActorID: "isbe", MutationID: "mut-1", Signature: "sig"}}); err != nil {
 		t.Fatalf("unexpected deprecate error: %v", err)
 	}
 }
@@ -64,12 +66,14 @@ func TestHighConfidenceRequiresForce(t *testing.T) {
 		Content:    "refined",
 		Reason:     "Clarify architecture decisions",
 		SourceRefs: []string{"adr:0010"},
+		Envelope:   contracts.MutationEnvelope{ActorID: "isbe", MutationID: "mut-1", Signature: "sig"},
 	}); err == nil {
 		t.Fatal("expected high-confidence force requirement")
 	}
 
 	if _, err := svc.Deprecate(context.Background(), "mem-1", contracts.MemoryDeprecateRequest{
-		Reason: "Deprecated by policy revision",
+		Reason:   "Deprecated by policy revision",
+		Envelope: contracts.MutationEnvelope{ActorID: "isbe", MutationID: "mut-2", Signature: "sig"},
 	}); err == nil {
 		t.Fatal("expected high-confidence force requirement on deprecate")
 	}
@@ -79,8 +83,21 @@ func TestHighConfidenceRequiresForce(t *testing.T) {
 		Reason:     "Clarify architecture decisions",
 		SourceRefs: []string{"adr:0010"},
 		Force:      true,
+		Envelope:   contracts.MutationEnvelope{ActorID: "isbe", MutationID: "mut-3", Signature: "sig"},
 	}); err != nil {
 		t.Fatalf("unexpected force-correct error: %v", err)
+	}
+}
+
+func TestEnvelopeRequired(t *testing.T) {
+	svc := NewService(fakeStore{obj: models.MemoryObject{ObjectID: "mem-1", Confidence: 0.5, SourceRefs: []string{"adr:0009"}}})
+	_, err := svc.Correct(context.Background(), "mem-1", contracts.MemoryCorrectRequest{
+		Content: "refined",
+		Reason:  "Clarify architecture decisions",
+		Force:   true,
+	})
+	if err == nil {
+		t.Fatal("expected missing envelope error")
 	}
 }
 

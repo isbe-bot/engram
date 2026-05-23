@@ -14,8 +14,8 @@ const protectedConfidenceThreshold = 0.90
 
 type memoryGovernor interface {
 	GetMemoryObject(ctx context.Context, objectID string) (models.MemoryObject, error)
-	CorrectMemoryObject(ctx context.Context, objectID, content, reason string, sourceRefs []string) (models.MemoryObject, error)
-	DeprecateMemoryObject(ctx context.Context, objectID, reason string) (models.MemoryObject, error)
+	CorrectMemoryObject(ctx context.Context, objectID, content, reason string, sourceRefs []string, env contracts.MutationEnvelope) (models.MemoryObject, error)
+	DeprecateMemoryObject(ctx context.Context, objectID, reason string, env contracts.MutationEnvelope) (models.MemoryObject, error)
 	ListMemoryObjectEvents(ctx context.Context, objectID, action string, beforeID, limit int) ([]map[string]any, error)
 }
 
@@ -38,6 +38,9 @@ func (s *Service) Correct(ctx context.Context, objectID string, req contracts.Me
 	if err := validateReason(req.Reason); err != nil {
 		return models.MemoryObject{}, err
 	}
+	if err := validateEnvelope(req.Envelope); err != nil {
+		return models.MemoryObject{}, err
+	}
 	if len(req.SourceRefs) > 0 {
 		if err := policy.ValidateSourceRefs(req.SourceRefs); err != nil {
 			return models.MemoryObject{}, err
@@ -52,7 +55,7 @@ func (s *Service) Correct(ctx context.Context, objectID string, req contracts.Me
 		return models.MemoryObject{}, fmt.Errorf("high-confidence memory requires force=true")
 	}
 
-	return s.store.CorrectMemoryObject(ctx, objectID, req.Content, req.Reason, req.SourceRefs)
+	return s.store.CorrectMemoryObject(ctx, objectID, req.Content, req.Reason, req.SourceRefs, req.Envelope)
 }
 
 func (s *Service) Deprecate(ctx context.Context, objectID string, req contracts.MemoryDeprecateRequest) (models.MemoryObject, error) {
@@ -66,6 +69,9 @@ func (s *Service) Deprecate(ctx context.Context, objectID string, req contracts.
 	if err := validateReason(req.Reason); err != nil {
 		return models.MemoryObject{}, err
 	}
+	if err := validateEnvelope(req.Envelope); err != nil {
+		return models.MemoryObject{}, err
+	}
 
 	obj, err := s.store.GetMemoryObject(ctx, objectID)
 	if err != nil {
@@ -75,7 +81,7 @@ func (s *Service) Deprecate(ctx context.Context, objectID string, req contracts.
 		return models.MemoryObject{}, fmt.Errorf("high-confidence memory requires force=true")
 	}
 
-	return s.store.DeprecateMemoryObject(ctx, objectID, req.Reason)
+	return s.store.DeprecateMemoryObject(ctx, objectID, req.Reason, req.Envelope)
 }
 
 func (s *Service) History(ctx context.Context, objectID string, req contracts.MemoryHistoryRequest) ([]map[string]any, error) {
@@ -110,6 +116,19 @@ func validateReason(reason string) error {
 	}
 	if len(strings.Fields(r)) < 2 {
 		return fmt.Errorf("reason must contain enough detail")
+	}
+	return nil
+}
+
+func validateEnvelope(env contracts.MutationEnvelope) error {
+	if strings.TrimSpace(env.ActorID) == "" {
+		return fmt.Errorf("envelope.actor_id is required")
+	}
+	if strings.TrimSpace(env.MutationID) == "" {
+		return fmt.Errorf("envelope.mutation_id is required")
+	}
+	if strings.TrimSpace(env.Signature) == "" {
+		return fmt.Errorf("envelope.signature is required")
 	}
 	return nil
 }

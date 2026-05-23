@@ -11,7 +11,7 @@ import (
 )
 
 type memoryCreator interface {
-	CreateMemoryObject(ctx context.Context, m models.MemoryObject) (models.MemoryObject, error)
+	CreateMemoryObject(ctx context.Context, m models.MemoryObject, env contracts.MutationEnvelope) (models.MemoryObject, error)
 }
 
 type Service struct {
@@ -48,5 +48,16 @@ func (s *Service) Curate(ctx context.Context, req contracts.MemoryWriteRequest) 
 		return models.MemoryObject{}, err
 	}
 
-	return s.store.CreateMemoryObject(ctx, obj)
+	env := req.Envelope
+	if strings.TrimSpace(env.ActorID) == "" {
+		env.ActorID = "system"
+	}
+	if strings.TrimSpace(env.MutationID) == "" {
+		env.MutationID = fmt.Sprintf("mut-%d", now.UTC().UnixNano())
+	}
+	if strings.TrimSpace(env.Signature) == "" {
+		env.Signature = "unsigned"
+	}
+
+	return s.store.CreateMemoryObject(ctx, obj, env)
 }
