@@ -49,6 +49,9 @@ func (s *Service) Correct(ctx context.Context, objectID string, req contracts.Me
 	if err := validateReason(req.Reason); err != nil {
 		return models.MemoryObject{}, err
 	}
+	if err := policy.EnsureNoSecretLikeText(req.Content); err != nil {
+		return models.MemoryObject{}, err
+	}
 	if err := validateEnvelope(req.Envelope); err != nil {
 		return models.MemoryObject{}, err
 	}

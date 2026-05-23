@@ -1,6 +1,9 @@
 package policy
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValidateType(t *testing.T) {
 	if err := ValidateType("decision"); err != nil {
@@ -26,6 +29,17 @@ func TestValidateClassification(t *testing.T) {
 	}
 	if err := ValidateClassification("invalid"); err == nil {
 		t.Fatal("expected invalid classification error")
+	}
+}
+
+func TestDetectSecretLikeText(t *testing.T) {
+	githubToken := "ghp_" + strings.Repeat("a", 24)
+	findings := DetectSecretLikeText("token=" + githubToken)
+	if len(findings) == 0 {
+		t.Fatal("expected secret-like token finding")
+	}
+	if err := EnsureNoSecretLikeText("ordinary product decision with no credentials"); err != nil {
+		t.Fatalf("did not expect secret finding: %v", err)
 	}
 }
 

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -29,6 +30,18 @@ func TestMemoryObjectNormalizeAndValidateContractFields(t *testing.T) {
 	}
 	if obj.ProvenanceHash != obj.ComputeProvenanceHash() {
 		t.Fatal("expected deterministic provenance hash")
+	}
+}
+
+func TestMemoryObjectNormalizeRejectsSecretLikeContent(t *testing.T) {
+	obj := MemoryObject{
+		Type:           "decision",
+		Content:        "api_key=" + strings.Repeat("a", 24),
+		SourceRefs:     []string{"adr:0009"},
+		Classification: "product",
+	}
+	if err := obj.NormalizeAndValidate(time.Now()); err == nil {
+		t.Fatal("expected secret-like content error")
 	}
 }
 

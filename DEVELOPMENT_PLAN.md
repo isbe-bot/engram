@@ -273,3 +273,17 @@ Verification:
 
 - Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.
 
+
+### 2026-05-23 — Milestone 3 slice A
+
+Completed:
+
+- Added basic secret-like content detector for private key headers, common provider token shapes, AWS access keys, Slack tokens, OpenAI-style API keys, GitHub token shapes, and generic secret assignments.
+- Enforced secret-like rejection on event ingest data.
+- Enforced secret-like rejection on memory curation content.
+- Enforced secret-like rejection on correction content.
+- Added tests for policy detection, event rejection, memory object rejection, and API ingest rejection.
+
+Verification:
+
+- Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.

@@ -50,6 +50,9 @@ func (m *MemoryObject) NormalizeAndValidate(now time.Time) error {
 	if m.Content == "" {
 		return fmt.Errorf("content is required")
 	}
+	if err := policy.EnsureNoSecretLikeText(m.Content); err != nil {
+		return err
+	}
 
 	refs := make([]string, 0, len(m.SourceRefs))
 	for _, ref := range m.SourceRefs {

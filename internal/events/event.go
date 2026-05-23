@@ -1,9 +1,12 @@
 package events
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/aileun/engram/internal/policy"
 )
 
 type Envelope struct {
@@ -31,6 +34,13 @@ func (e *Envelope) NormalizeAndValidate(now time.Time) error {
 	}
 	if e.Data == nil {
 		e.Data = map[string]any{}
+	}
+	dataJSON, err := json.Marshal(e.Data)
+	if err != nil {
+		return fmt.Errorf("data must be JSON serializable: %w", err)
+	}
+	if err := policy.EnsureNoSecretLikeText(string(dataJSON)); err != nil {
+		return err
 	}
 
 	if e.OccurredAt == "" {

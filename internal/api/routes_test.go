@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aileun/engram/internal/curate"
@@ -147,6 +148,13 @@ func TestMemoryAPIIntegrationValidation(t *testing.T) {
 
 	doRaw(t, client, http.MethodPost, ts.server.URL+"/v1/events/ingest", []byte(`{"event_id":`), http.StatusBadRequest)
 	doJSON(t, client, http.MethodGet, ts.server.URL+"/v1/events/ingest", nil, http.StatusMethodNotAllowed)
+	secretEvent := map[string]any{
+		"event_id":       "evt-secret",
+		"event_type":     "task.completed",
+		"environment_id": "api-test",
+		"data":           map[string]any{"token": "ghp_" + strings.Repeat("a", 24)},
+	}
+	doJSON(t, client, http.MethodPost, ts.server.URL+"/v1/events/ingest", secretEvent, http.StatusBadRequest)
 
 	badCurate := map[string]any{
 		"type":           "decision",
