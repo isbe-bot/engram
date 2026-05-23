@@ -287,3 +287,19 @@ Completed:
 Verification:
 
 - Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.
+
+### 2026-05-23 — Milestone 4 slice A
+
+Completed:
+
+- Added deterministic local hash embedding provider for offline/dev indexing tests.
+- Replaced Qdrant placeholder with HTTP client supporting collection creation, point upsert, and vector search.
+- Added deterministic UUID-shaped Qdrant point IDs from source IDs.
+- Added Qdrant client tests with `httptest`.
+- Added config field `storage.qdrant_collection` and validation.
+- Updated example config with `engram_memory` collection.
+
+Verification:
+
+- Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.
+- Live Qdrant smoke passed against `http://127.0.0.1:6333` using temporary `engram_smoke` collection.

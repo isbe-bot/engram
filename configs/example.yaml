@@ -5,6 +5,7 @@ server:
 storage:
   sqlite_path: "/srv/aileun/clients/example/runtime/db/engram.sqlite"
   qdrant_url: "http://127.0.0.1:6333"
+  qdrant_collection: "engram_memory"
   redis_addr: "127.0.0.1:6379"
 
 ingestion:

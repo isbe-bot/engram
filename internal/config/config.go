@@ -14,9 +14,10 @@ type Config struct {
 		Port int    `yaml:"port"`
 	} `yaml:"server"`
 	Storage struct {
-		SQLitePath string `yaml:"sqlite_path"`
-		QdrantURL  string `yaml:"qdrant_url"`
-		RedisAddr  string `yaml:"redis_addr"`
+		SQLitePath       string `yaml:"sqlite_path"`
+		QdrantURL        string `yaml:"qdrant_url"`
+		QdrantCollection string `yaml:"qdrant_collection"`
+		RedisAddr        string `yaml:"redis_addr"`
 	} `yaml:"storage"`
 	Ingestion struct {
 		MaxBatchSize int `yaml:"max_batch_size"`
@@ -51,6 +52,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Storage.SQLitePath) == "" {
 		return fmt.Errorf("storage.sqlite_path is required")
+	}
+	if strings.TrimSpace(c.Storage.QdrantURL) != "" && strings.TrimSpace(c.Storage.QdrantCollection) == "" {
+		return fmt.Errorf("storage.qdrant_collection is required when storage.qdrant_url is set")
 	}
 	return nil
 }
