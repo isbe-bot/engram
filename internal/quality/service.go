@@ -22,6 +22,21 @@ type Snapshot struct {
 	IngestionFreshnessState string         `json:"ingestion_freshness_state"`
 }
 
+type SLOMetric struct {
+	Name   string   `json:"name"`
+	Value  *float64 `json:"value,omitempty"`
+	Target *float64 `json:"target,omitempty"`
+	Unit   string   `json:"unit"`
+	State  string   `json:"state"`
+}
+
+type Report struct {
+	GeneratedAt string      `json:"generated_at"`
+	WindowHours int         `json:"window_hours"`
+	Summary     Snapshot    `json:"summary"`
+	SLO         []SLOMetric `json:"slo"`
+}
+
 type Store interface {
 	EventCount(ctx context.Context) (int, error)
 	MemoryObjectCount(ctx context.Context) (int, error)
@@ -29,6 +44,18 @@ type Store interface {
 	MemoryAuditActionCounts(ctx context.Context) (map[string]int, error)
 	LatestIngestedEventAt(ctx context.Context) (string, bool, error)
 	LatestMemoryUpdatedAt(ctx context.Context) (string, bool, error)
+}
+
+type latencyReader interface {
+	LatencyP95MS(ctx context.Context, operation string, since time.Time) (float64, bool, error)
+}
+
+type correctionLatencyReader interface {
+	CorrectionApplyLatencyP95MS(ctx context.Context, since time.Time) (float64, bool, error)
+}
+
+type staleRateReader interface {
+	StaleMemoryRate(ctx context.Context, staleBefore time.Time) (float64, bool, error)
 }
 
 type Service struct {
@@ -98,6 +125,100 @@ func (s *Service) Metrics(ctx context.Context) (Snapshot, error) {
 
 	return snap, nil
 }
+
+func (s *Service) Report(ctx context.Context) (Report, error) {
+	now := time.Now().UTC()
+	if s != nil && s.now != nil {
+		now = s.now().UTC()
+	}
+	summary, err := s.Metrics(ctx)
+	if err != nil {
+		return Report{}, err
+	}
+	report := Report{
+		GeneratedAt: now.Format(time.RFC3339),
+		WindowHours: 24,
+		Summary:     summary,
+		SLO:         make([]SLOMetric, 0, 5),
+	}
+
+	var ingestLag *float64
+	if summary.IngestionLagSeconds != nil {
+		v := float64(*summary.IngestionLagSeconds)
+		ingestLag = &v
+	}
+	report.SLO = append(report.SLO, buildSLO("ingest_lag_p95", ingestLag, float64Ptr(30), "seconds"))
+
+	latReader, ok := s.store.(latencyReader)
+	if ok {
+		if p95, found, err := latReader.LatencyP95MS(ctx, "retrieve.search", now.Add(-24*time.Hour)); err != nil {
+			return Report{}, err
+		} else {
+			report.SLO = append(report.SLO, buildSLO("retrieval_p95", valuePtr(found, p95), float64Ptr(250), "ms"))
+		}
+	} else {
+		report.SLO = append(report.SLO, buildSLO("retrieval_p95", nil, float64Ptr(250), "ms"))
+	}
+
+	if summary.LatestMemoryUpdatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, summary.LatestMemoryUpdatedAt); err == nil {
+			v := now.Sub(t).Seconds()
+			report.SLO = append(report.SLO, buildSLO("consolidation_freshness", float64Ptr(v), float64Ptr(3600), "seconds"))
+		} else {
+			report.SLO = append(report.SLO, buildSLO("consolidation_freshness", nil, float64Ptr(3600), "seconds"))
+		}
+	} else {
+		report.SLO = append(report.SLO, buildSLO("consolidation_freshness", nil, float64Ptr(3600), "seconds"))
+	}
+
+	corrReader, ok := s.store.(correctionLatencyReader)
+	if ok {
+		if p95, found, err := corrReader.CorrectionApplyLatencyP95MS(ctx, now.Add(-30*24*time.Hour)); err != nil {
+			return Report{}, err
+		} else {
+			report.SLO = append(report.SLO, buildSLO("correction_apply_latency_p95", valuePtr(found, p95), float64Ptr(86400000), "ms"))
+		}
+	} else {
+		report.SLO = append(report.SLO, buildSLO("correction_apply_latency_p95", nil, float64Ptr(86400000), "ms"))
+	}
+
+	staleReader, ok := s.store.(staleRateReader)
+	if ok {
+		if rate, found, err := staleReader.StaleMemoryRate(ctx, now.Add(-30*24*time.Hour)); err != nil {
+			return Report{}, err
+		} else {
+			report.SLO = append(report.SLO, buildSLO("stale_memory_rate", valuePtr(found, rate), float64Ptr(0.2), "ratio"))
+		}
+	} else {
+		report.SLO = append(report.SLO, buildSLO("stale_memory_rate", nil, float64Ptr(0.2), "ratio"))
+	}
+
+	return report, nil
+}
+
+func buildSLO(name string, value *float64, target *float64, unit string) SLOMetric {
+	metric := SLOMetric{Name: name, Value: value, Target: target, Unit: unit, State: "unknown"}
+	if value == nil || target == nil {
+		return metric
+	}
+	if *value <= *target {
+		metric.State = "within_slo"
+	} else if *value <= (*target * 1.5) {
+		metric.State = "watch"
+	} else {
+		metric.State = "breach"
+	}
+	return metric
+}
+
+func valuePtr(ok bool, v float64) *float64 {
+	if !ok {
+		return nil
+	}
+	return &v
+}
+
+func float64Ptr(v float64) *float64 { return &v }
 
 func freshnessState(lagSeconds int64) string {
 	switch {

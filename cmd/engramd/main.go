@@ -57,12 +57,13 @@ func main() {
 	curateSvc := curate.NewService(store, indexSvc)
 	governSvc := govern.NewService(store, indexSvc)
 	retrieveSvc := retrieve.NewService(store, store, indexSvc)
+	retrieveSvc.SetLatencyRecorder(quality.NewLatencyRecorder(store))
 	qualitySvc := quality.NewService(store)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	w := workers.NewManager(cfg)
+	w := workers.NewManager(cfg, workers.WithStore(store))
 	if err := w.Start(ctx); err != nil {
 		log.Fatalf("start workers: %v", err)
 	}

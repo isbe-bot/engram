@@ -350,3 +350,20 @@ Verification:
 - Backup smoke passed against `/tmp/engram-hybrid-smoke.yaml`.
 - Install script dry-run passed with `DRY_RUN=1`.
 - Release script smoke passed with `scripts/release.sh v1-smoke`, including full release gates and artifact generation under `dist/v1-smoke`.
+
+### 2026-05-23 — Worker/runtime + SLO report + legacy compatibility slice
+
+Completed:
+
+- Added migration `0005_worker_runtime_and_quality.sql` with durable `worker_jobs`, `worker_checkpoints`, and `quality_latency_samples` tables.
+- Implemented worker queue primitives in SQLite (`enqueue`, `claim`, checkpoint append, retry/dead-letter transitions, idempotency by key).
+- Replaced worker manager stub with lifecycle-managed concurrent runtime, retry/dead-letter handling, and graceful stop.
+- Added retrieval latency sampling instrumentation and persisted latency recording.
+- Added quality SLO report generation (ingest lag, retrieval p95, consolidation freshness, correction apply latency, stale-memory rate).
+- Added API endpoint `GET /v1/quality/report` and CLI command `engramctl report`.
+- Added legacy compatibility wrapper `scripts/legacy-memory.sh` plus `docs/LEGACY_COMPAT.md` cutover/fallback notes.
+- Added/updated test coverage for worker lifecycle, latency recording, quality report generation, and API report exposure.
+
+Verification:
+
+- Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.

@@ -25,6 +25,7 @@ type searcher interface {
 
 type qualityReporter interface {
 	Metrics(ctx context.Context) (quality.Snapshot, error)
+	Report(ctx context.Context) (quality.Report, error)
 }
 
 type curator interface {
@@ -167,6 +168,23 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 				"include_events": includeEvents,
 			},
 		})
+	})
+
+	mux.HandleFunc("/v1/quality/report", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+			return
+		}
+		if deps.Quality == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "quality service unavailable"})
+			return
+		}
+		report, err := deps.Quality.Report(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"report": report})
 	})
 
 	mux.HandleFunc("/v1/quality/metrics", func(w http.ResponseWriter, r *http.Request) {

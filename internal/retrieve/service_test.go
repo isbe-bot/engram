@@ -3,6 +3,7 @@ package retrieve
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 type fakeMemorySearcher struct {
@@ -37,6 +38,16 @@ func (f fakeEventSearcher) SearchEvents(ctx context.Context, query string, limit
 		return f.results[:limit], nil
 	}
 	return f.results, nil
+}
+
+type fakeLatencyRecorder struct {
+	count int
+	last  time.Duration
+}
+
+func (f *fakeLatencyRecorder) RecordLatency(_ context.Context, _ string, latency time.Duration) {
+	f.count++
+	f.last = latency
 }
 
 func TestSearchDeduplicatesSemanticAndSQLiteMemory(t *testing.T) {
@@ -94,5 +105,21 @@ func TestSearchIncludesEventsAndScores(t *testing.T) {
 	}
 	if _, ok := resp.Results[1]["citations"]; !ok {
 		t.Fatal("expected citations on event result")
+	}
+}
+
+func TestSearchRecordsLatency(t *testing.T) {
+	recorder := &fakeLatencyRecorder{}
+	svc := NewService(fakeMemorySearcher{results: []map[string]any{}}, nil)
+	svc.SetLatencyRecorder(recorder)
+
+	if _, err := svc.Search(context.Background(), Query{Limit: 1}); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if recorder.count != 1 {
+		t.Fatalf("expected one latency record, got %d", recorder.count)
+	}
+	if recorder.last < 0 {
+		t.Fatalf("expected non-negative latency, got %v", recorder.last)
 	}
 }

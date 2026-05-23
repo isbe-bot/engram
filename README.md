@@ -4,7 +4,7 @@ Open-source memory intelligence core for AI agents.
 
 ## Binaries
 - `engramd`: local daemon/service (ingest, curation, retrieval, governance, quality)
-- `engramctl`: operator CLI (status, migrate, quality, reindex, backup, restore, health, ingest, curate, search, get, correct, deprecate, history)
+- `engramctl`: operator CLI (status, migrate, quality, report, reindex, backup, restore, health, ingest, curate, search, get, correct, deprecate, history)
 
 ## Quick start
 ```bash
@@ -15,6 +15,7 @@ make test
 ./bin/engramctl status --config ./configs/example.yaml
 ./bin/engramctl health --config ./configs/example.yaml
 ./bin/engramctl reindex --config ./configs/example.yaml
+./bin/engramctl report --config ./configs/example.yaml
 ./bin/engramctl backup --config ./configs/example.yaml --out ./engram.sqlite.bak
 ```
 
@@ -29,6 +30,7 @@ make test
 - `GET /v1/memory/{object_id}/history?limit=<n>&action=<curated|corrected|deprecated>&before=<event_id>`
 - `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>&cursor=<offset>&include_events=<true|false>`
 - `GET /v1/quality/metrics`
+- `GET /v1/quality/report`
 
 Governance mutation endpoints require signed envelope fields:
 - `envelope.actor_id`
@@ -77,6 +79,7 @@ curl -s -X POST http://127.0.0.1:8787/v1/memory/mem-1/deprecate \
 curl -s 'http://127.0.0.1:8787/v1/memory/search?q=Go&status=accepted&min_confidence=0.9&limit=10&include_events=true'
 
 curl -s http://127.0.0.1:8787/v1/quality/metrics
+curl -s http://127.0.0.1:8787/v1/quality/report
 ```
 
 ### Example CLI API usage
@@ -142,4 +145,7 @@ This foundation is aligned with `engram-go-service-blueprint-v1.md` and now incl
 - operator reindex command to rebuild Qdrant vectors from SQLite memory objects
 - backup/restore commands for SQLite operational recovery
 - systemd unit, install script, release script, and operator runbook
+- worker runtime durability tables (`worker_jobs`, `worker_checkpoints`) with idempotent enqueue semantics
 - quality metrics endpoint for ingestion freshness, memory counts, audit action counts, and governance rates
+- quality SLO report endpoint (`/v1/quality/report`) and CLI command (`engramctl report`)
+- legacy compatibility wrapper script (`scripts/legacy-memory.sh`) and cutover notes (`docs/LEGACY_COMPAT.md`)

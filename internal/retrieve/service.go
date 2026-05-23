@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aileun/engram/internal/citations"
 )
@@ -36,10 +37,15 @@ type semanticSearcher interface {
 	SearchSemantic(ctx context.Context, q Query) ([]SearchResult, error)
 }
 
+type latencyRecorder interface {
+	RecordLatency(ctx context.Context, operation string, latency time.Duration)
+}
+
 type Service struct {
 	memory   memorySearcher
 	events   eventSearcher
 	semantic semanticSearcher
+	recorder latencyRecorder
 }
 
 func NewService(memory memorySearcher, events eventSearcher, semantic ...semanticSearcher) *Service {
@@ -50,7 +56,21 @@ func NewService(memory memorySearcher, events eventSearcher, semantic ...semanti
 	return svc
 }
 
+func (s *Service) SetLatencyRecorder(recorder latencyRecorder) {
+	if s == nil {
+		return
+	}
+	s.recorder = recorder
+}
+
 func (s *Service) Search(ctx context.Context, q Query) (Response, error) {
+	start := time.Now()
+	defer func() {
+		if s != nil && s.recorder != nil {
+			s.recorder.RecordLatency(ctx, "retrieve.search", time.Since(start))
+		}
+	}()
+
 	if s == nil || s.memory == nil {
 		return Response{Results: []SearchResult{}}, nil
 	}

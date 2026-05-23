@@ -34,7 +34,7 @@ func main() {
 	configPath := fs.String("config", "./configs/example.yaml", "path to config file")
 
 	switch cmd {
-	case "status", "migrate", "quality", "reindex":
+	case "status", "migrate", "quality", "report", "reindex":
 		_ = fs.Parse(os.Args[2:])
 		runLocalCommand(cmd, *configPath)
 	case "backup":
@@ -125,7 +125,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Println("usage: engramctl <status|migrate|quality|reindex|backup|restore|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
+	fmt.Println("usage: engramctl <status|migrate|quality|report|reindex|backup|restore|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
 }
 
 func runLocalCommand(cmd, configPath string) {
@@ -169,6 +169,16 @@ func runLocalCommand(cmd, configPath string) {
 			log.Fatalf("quality metrics: %v", err)
 		}
 		writePrettyJSON(metrics)
+	case "report":
+		if err := store.ApplyMigrations(); err != nil {
+			log.Fatalf("migrations: %v", err)
+		}
+		svc := quality.NewService(store)
+		report, err := svc.Report(context.Background())
+		if err != nil {
+			log.Fatalf("quality report: %v", err)
+		}
+		writePrettyJSON(report)
 	case "reindex":
 		runReindex(cfg, store)
 	}

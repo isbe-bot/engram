@@ -376,3 +376,117 @@ func TestListMemoryObjectEventsFilters(t *testing.T) {
 		t.Fatal("expected prev_hash on corrected event")
 	}
 }
+
+func TestWorkerJobQueueLifecycle(t *testing.T) {
+	ctx := context.Background()
+	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	jobID, err := store.EnqueueWorkerJob(ctx, "quality_eval", map[string]any{"scope": "daily"}, "idem-1", 3)
+	if err != nil {
+		t.Fatalf("enqueue worker job: %v", err)
+	}
+	dupID, err := store.EnqueueWorkerJob(ctx, "quality_eval", map[string]any{"scope": "daily"}, "idem-1", 3)
+	if err != nil {
+		t.Fatalf("enqueue duplicate idempotency key: %v", err)
+	}
+	if dupID != jobID {
+		t.Fatalf("expected duplicate idempotency key to return same id, got job=%d dup=%d", jobID, dupID)
+	}
+
+	claimed, ok, err := store.ClaimWorkerJob(ctx, "worker-1", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("claim worker job: %v", err)
+	}
+	if !ok || claimed.ID != jobID {
+		t.Fatalf("expected claimed job %d, got ok=%v job=%+v", jobID, ok, claimed)
+	}
+	if err := store.AppendWorkerCheckpoint(ctx, jobID, "claimed", "running", map[string]any{"worker": "worker-1"}, time.Now().UTC()); err != nil {
+		t.Fatalf("append worker checkpoint: %v", err)
+	}
+	if err := store.MarkWorkerJobRetry(ctx, jobID, 1, "temporary error", time.Now().UTC().Add(time.Second), time.Now().UTC()); err != nil {
+		t.Fatalf("mark retry: %v", err)
+	}
+	if err := store.MarkWorkerJobDeadLetter(ctx, jobID, 3, "permanent failure", time.Now().UTC()); err != nil {
+		t.Fatalf("mark dead-letter: %v", err)
+	}
+	state, attempts, err := store.WorkerJobState(ctx, jobID)
+	if err != nil {
+		t.Fatalf("worker job state: %v", err)
+	}
+	if state != "dead_letter" || attempts != 3 {
+		t.Fatalf("expected dead_letter/3, got state=%s attempts=%d", state, attempts)
+	}
+}
+
+func TestQualitySLOQueries(t *testing.T) {
+	ctx := context.Background()
+	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	now := time.Now().UTC()
+	if err := store.RecordLatencySample(ctx, "retrieve.search", 100*time.Millisecond, now); err != nil {
+		t.Fatalf("record latency sample1: %v", err)
+	}
+	if err := store.RecordLatencySample(ctx, "retrieve.search", 240*time.Millisecond, now); err != nil {
+		t.Fatalf("record latency sample2: %v", err)
+	}
+	if err := store.RecordLatencySample(ctx, "retrieve.search", 50*time.Millisecond, now); err != nil {
+		t.Fatalf("record latency sample3: %v", err)
+	}
+	p95, ok, err := store.LatencyP95MS(ctx, "retrieve.search", now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("latency p95: %v", err)
+	}
+	if !ok || p95 < 200 {
+		t.Fatalf("expected p95 >= 200ms, got ok=%v p95=%.2f", ok, p95)
+	}
+
+	createdAt := now.Add(-2 * time.Hour).Format(time.RFC3339)
+	updatedAt := now.Add(-40 * 24 * time.Hour).Format(time.RFC3339)
+	obj := models.MemoryObject{
+		ObjectID:       "mem-slo-1",
+		Type:           "decision",
+		SchemaVer:      "v1",
+		Content:        "Baseline",
+		SourceRefs:     []string{"spec:slo"},
+		Confidence:     0.7,
+		Classification: "product",
+		Status:         models.MemoryStatusAccepted,
+		CreatedAt:      createdAt,
+		UpdatedAt:      updatedAt,
+	}
+	if _, err := store.CreateMemoryObject(ctx, obj, testEnv("mut-slo-1")); err != nil {
+		t.Fatalf("create memory object: %v", err)
+	}
+	if _, err := store.CorrectMemoryObject(ctx, obj.ObjectID, "Baseline updated", "Latency correction for slo metrics", []string{"spec:slo"}, testEnv("mut-slo-2")); err != nil {
+		t.Fatalf("correct memory object: %v", err)
+	}
+
+	corrP95, corrOK, err := store.CorrectionApplyLatencyP95MS(ctx, now.Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatalf("correction apply latency p95: %v", err)
+	}
+	if !corrOK || corrP95 < 0 {
+		t.Fatalf("expected correction latency sample, got ok=%v p95=%v", corrOK, corrP95)
+	}
+	staleRate, staleOK, err := store.StaleMemoryRate(ctx, now.Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatalf("stale memory rate: %v", err)
+	}
+	if !staleOK || staleRate < 0 || staleRate > 1 {
+		t.Fatalf("unexpected stale memory rate: ok=%v rate=%v", staleOK, staleRate)
+	}
+}

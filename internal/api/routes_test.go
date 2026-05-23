@@ -140,6 +140,13 @@ func TestMemoryAPIIntegrationLifecycle(t *testing.T) {
 	if got := int(metrics["correction_count"].(float64)); got != 1 {
 		t.Fatalf("expected correction_count=1, got %+v", metrics)
 	}
+
+	reportResp := doJSON(t, client, http.MethodGet, ts.server.URL+"/v1/quality/report", nil, http.StatusOK)
+	report := mapValue(t, reportResp, "report")
+	slo, ok := report["slo"].([]any)
+	if !ok || len(slo) == 0 {
+		t.Fatalf("expected non-empty SLO report, got %+v", report)
+	}
 }
 
 func TestMemoryAPIIntegrationValidation(t *testing.T) {
