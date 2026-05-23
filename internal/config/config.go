@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	DefaultBind         = "127.0.0.1"
-	DefaultPort         = 8787
-	DefaultMaxBodyBytes = int64(1 << 20) // 1 MiB
+	DefaultBind               = "127.0.0.1"
+	DefaultPort               = 8787
+	DefaultMaxBodyBytes       = int64(1 << 20) // 1 MiB
+	DefaultRateLimitPerMinute = 0              // disabled by default for local sidecars
 )
 
 type Config struct {
@@ -23,10 +24,11 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Bind         string `yaml:"bind"`
-	Port         int    `yaml:"port"`
-	APIKey       string `yaml:"api_key"`
-	MaxBodyBytes int64  `yaml:"max_body_bytes"`
+	Bind               string `yaml:"bind"`
+	Port               int    `yaml:"port"`
+	APIKey             string `yaml:"api_key"`
+	MaxBodyBytes       int64  `yaml:"max_body_bytes"`
+	RateLimitPerMinute int    `yaml:"rate_limit_per_minute"`
 }
 
 type StorageConfig struct {
@@ -65,6 +67,7 @@ func Defaults() Config {
 	cfg.Server.Bind = DefaultBind
 	cfg.Server.Port = DefaultPort
 	cfg.Server.MaxBodyBytes = DefaultMaxBodyBytes
+	cfg.Server.RateLimitPerMinute = DefaultRateLimitPerMinute
 	cfg.Storage.SQLitePath = "./engram.sqlite"
 	cfg.Ingestion.MaxBatchSize = 200
 	cfg.Ingestion.WorkerCount = 1
@@ -77,6 +80,7 @@ func (c *Config) ApplyEnv() {
 	setInt(&c.Server.Port, "ENGRAM_SERVER_PORT")
 	setString(&c.Server.APIKey, "ENGRAM_API_KEY")
 	setInt64(&c.Server.MaxBodyBytes, "ENGRAM_MAX_BODY_BYTES")
+	setInt(&c.Server.RateLimitPerMinute, "ENGRAM_RATE_LIMIT_PER_MINUTE")
 	setString(&c.Storage.SQLitePath, "ENGRAM_SQLITE_PATH")
 	setString(&c.Storage.QdrantURL, "ENGRAM_QDRANT_URL")
 	setString(&c.Storage.QdrantCollection, "ENGRAM_QDRANT_COLLECTION")
@@ -94,6 +98,9 @@ func (c Config) Validate() error {
 	}
 	if c.Server.MaxBodyBytes <= 0 {
 		return fmt.Errorf("server.max_body_bytes must be > 0")
+	}
+	if c.Server.RateLimitPerMinute < 0 {
+		return fmt.Errorf("server.rate_limit_per_minute must be >= 0")
 	}
 	if strings.TrimSpace(c.Storage.SQLitePath) == "" {
 		return fmt.Errorf("storage.sqlite_path is required")

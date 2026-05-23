@@ -6,6 +6,8 @@ server:
   api_key: ""
   # Maximum JSON request body size for write endpoints (1 MiB default).
   max_body_bytes: 1048576
+  # Optional per-client request limit across authenticated endpoints; 0 disables.
+  rate_limit_per_minute: 0
 
 storage:
   sqlite_path: "/srv/aileun/clients/example/runtime/db/engram.sqlite"

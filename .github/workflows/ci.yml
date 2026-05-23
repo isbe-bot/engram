@@ -12,6 +12,11 @@ jobs:
   go:
     name: Go quality gates
     runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -52,3 +57,45 @@ jobs:
 
       - name: Build binaries
         run: make build
+
+      - name: Qdrant integration smoke
+        run: |
+          cat > /tmp/engram-ci.yaml <<'EOF'
+          server:
+            bind: "127.0.0.1"
+            port: 18787
+            api_key: "ci-token"
+            max_body_bytes: 1048576
+            rate_limit_per_minute: 120
+          storage:
+            sqlite_path: "/tmp/engram-ci/engram.sqlite"
+            qdrant_url: "http://127.0.0.1:6333"
+            qdrant_collection: "engram_ci"
+          ingestion:
+            max_batch_size: 200
+            worker_count: 1
+          quality:
+            eval_interval: "24h"
+          EOF
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:6333/collections >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:6333/collections >/dev/null
+          ./bin/engramd --config /tmp/engram-ci.yaml > /tmp/engram-ci.log 2>&1 &
+          pid=$!
+          trap 'kill $pid || true; cat /tmp/engram-ci.log' EXIT
+          for i in {1..30}; do
+            if ./bin/engramctl health --config /tmp/engram-ci.yaml >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          ./bin/engramctl health --config /tmp/engram-ci.yaml
+          code=$(curl -s -o /tmp/unauth.json -w '%{http_code}' 'http://127.0.0.1:18787/v1/memory/search?q=governed')
+          test "$code" = "401"
+          ./bin/engramctl curate --config /tmp/engram-ci.yaml --json '{"object_id":"ci-qdrant-1","type":"decision","content":"CI verifies authenticated ENGRAM Qdrant semantic retrieval","source_refs":["spec:ci"],"confidence":0.9,"classification":"operations","scope":"local","envelope":{"actor_id":"ci","mutation_id":"ci-mut-1","signature":"ci-signature"}}'
+          ./bin/engramctl search --config /tmp/engram-ci.yaml --q "Qdrant semantic retrieval" --status accepted --min-confidence 0.8 > /tmp/search.json
+          grep -q '"retrieval_source": "qdrant"' /tmp/search.json

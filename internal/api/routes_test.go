@@ -149,6 +149,38 @@ func TestMemoryAPIIntegrationLifecycle(t *testing.T) {
 	}
 }
 
+func TestMemoryAPIRateLimiter(t *testing.T) {
+	store, err := sqlitestore.New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	if err := store.ApplyMigrations(); err != nil {
+		_ = store.Close()
+		t.Fatalf("apply migrations: %v", err)
+	}
+	mux := http.NewServeMux()
+	registerRoutes(mux, Dependencies{
+		Search:             retrieve.NewService(store, store),
+		Quality:            quality.NewService(store),
+		Health:             store,
+		APIKey:             "secret-test-token",
+		MaxBodyBytes:       1024,
+		RateLimitPerMinute: 1,
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		ts.Close()
+		if err := store.Close(); err != nil {
+			t.Fatalf("close sqlite store: %v", err)
+		}
+	})
+	client := ts.Client()
+	headers := map[string]string{"Authorization": "Bearer secret-test-token"}
+
+	doRawWithHeaders(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, headers, http.StatusOK)
+	doRawWithHeaders(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, headers, http.StatusTooManyRequests)
+}
+
 func TestMemoryAPIAuthAndBodyLimit(t *testing.T) {
 	store, err := sqlitestore.New(filepath.Join(t.TempDir(), "engram.sqlite"))
 	if err != nil {

@@ -89,8 +89,9 @@ Key YAML fields:
 server:
   bind: "127.0.0.1"
   port: 8787
-  api_key: ""              # optional Bearer token; strongly recommended when networked
-  max_body_bytes: 1048576  # write-endpoint JSON body limit
+  api_key: ""                 # optional Bearer token; strongly recommended when networked
+  max_body_bytes: 1048576     # write-endpoint JSON body limit
+  rate_limit_per_minute: 0    # optional per-client limit; 0 disables
 
 storage:
   sqlite_path: "/var/lib/engram/engram.sqlite"
@@ -108,6 +109,7 @@ Supported environment overrides:
 - `ENGRAM_SERVER_PORT`
 - `ENGRAM_API_KEY`
 - `ENGRAM_MAX_BODY_BYTES`
+- `ENGRAM_RATE_LIMIT_PER_MINUTE`
 - `ENGRAM_SQLITE_PATH`
 - `ENGRAM_QDRANT_URL`
 - `ENGRAM_QDRANT_COLLECTION`
@@ -122,6 +124,8 @@ Supported environment overrides:
 - Authenticated clients must send `Authorization: Bearer <api_key>`.
 - `/v1/health` remains unauthenticated for local liveness checks. All other API endpoints, including `/metrics`, require the token when configured.
 - Keep `server.max_body_bytes` low enough for expected memory payloads. The default is 1 MiB.
+- Set `server.rate_limit_per_minute` when exposing ENGRAM beyond trusted local automation. `0` disables rate limiting for local sidecars.
+- Rotate API keys by changing `server.api_key` or `ENGRAM_API_KEY`, restarting `engramd`, then updating clients. Avoid logging or committing tokens.
 - Prefer backup/restore workflows over direct SQLite edits.
 
 ## Current API (v1 bootstrap)

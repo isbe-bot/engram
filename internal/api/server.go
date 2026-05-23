@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -10,14 +11,16 @@ import (
 )
 
 type Dependencies struct {
-	Ingest       ingestor
-	Curate       curator
-	Govern       governor
-	Search       searcher
-	Quality      qualityReporter
-	Health       pinger
-	APIKey       string
-	MaxBodyBytes int64
+	Ingest             ingestor
+	Curate             curator
+	Govern             governor
+	Search             searcher
+	Quality            qualityReporter
+	Health             pinger
+	APIKey             string
+	MaxBodyBytes       int64
+	RateLimitPerMinute int
+	Logger             *slog.Logger
 }
 
 type Server struct {
@@ -27,9 +30,13 @@ type Server struct {
 func NewServer(cfg config.Config, deps Dependencies) *Server {
 	deps.APIKey = cfg.Server.APIKey
 	deps.MaxBodyBytes = cfg.Server.MaxBodyBytes
+	deps.RateLimitPerMinute = cfg.Server.RateLimitPerMinute
+	if deps.Logger == nil {
+		deps.Logger = slog.Default()
+	}
 	mux := http.NewServeMux()
 	registerRoutes(mux, deps)
-	return &Server{http: &http.Server{Addr: fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.Port), Handler: mux}}
+	return &Server{http: &http.Server{Addr: fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.Port), Handler: loggingMiddleware(deps.Logger, mux)}}
 }
 
 func (s *Server) Start(ctx context.Context) error {

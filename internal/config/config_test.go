@@ -46,6 +46,7 @@ func TestLoadDefaultsAndEnvOverrides(t *testing.T) {
 	t.Setenv("ENGRAM_SERVER_PORT", "9876")
 	t.Setenv("ENGRAM_API_KEY", "test-token")
 	t.Setenv("ENGRAM_MAX_BODY_BYTES", "2048")
+	t.Setenv("ENGRAM_RATE_LIMIT_PER_MINUTE", "123")
 	t.Setenv("ENGRAM_QDRANT_COLLECTION", "test_collection")
 
 	cfg, err := Load(cfgPath)
@@ -63,6 +64,9 @@ func TestLoadDefaultsAndEnvOverrides(t *testing.T) {
 	}
 	if cfg.Server.MaxBodyBytes != 2048 {
 		t.Fatalf("expected max body override, got %d", cfg.Server.MaxBodyBytes)
+	}
+	if cfg.Server.RateLimitPerMinute != 123 {
+		t.Fatalf("expected rate limit override, got %d", cfg.Server.RateLimitPerMinute)
 	}
 	if cfg.Storage.QdrantCollection != "test_collection" {
 		t.Fatalf("expected qdrant collection override")

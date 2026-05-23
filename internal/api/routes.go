@@ -63,11 +63,17 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		})
 	})
 
+	limiter := newRateLimiter(deps.RateLimitPerMinute, time.Minute)
 	requireAuth := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if !authorized(r, deps.APIKey) {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="engram"`)
 				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+				return
+			}
+			if !limiter.Allow(clientID(r)) {
+				w.Header().Set("Retry-After", "60")
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "rate limit exceeded"})
 				return
 			}
 			next(w, r)
