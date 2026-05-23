@@ -1,0 +1,33 @@
+{
+  "id": "engram",
+  "name": "ENGRAM Memory",
+  "description": "Governed ENGRAM memory corpus, tools, and OpenClaw fallback integration.",
+  "version": "0.1.0",
+  "activation": { "onStartup": true },
+  "contracts": {
+    "tools": ["engram_status", "engram_search", "engram_get", "engram_curate"]
+  },
+  "toolMetadata": {
+    "engram_curate": { "optional": true }
+  },
+  "uiHints": {
+    "apiKey": { "label": "ENGRAM API key", "sensitive": true },
+    "endpoint": { "label": "ENGRAM endpoint", "placeholder": "http://127.0.0.1:8787" },
+    "configPath": { "label": "engram.yaml path", "placeholder": "~/.config/engram/engram.yaml" }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "endpoint": { "type": "string", "default": "http://127.0.0.1:8787" },
+      "apiKey": { "type": "string" },
+      "configPath": { "type": "string", "default": "~/.config/engram/engram.yaml" },
+      "engramctl": { "type": "string", "default": "engramctl" },
+      "fallbackToCli": { "type": "boolean", "default": true },
+      "timeoutMs": { "type": "number", "minimum": 100, "default": 5000 },
+      "defaultLimit": { "type": "number", "minimum": 1, "maximum": 50, "default": 5 },
+      "defaultStatus": { "type": "string", "default": "accepted" },
+      "defaultMinConfidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 }
+    }
+  }
+}

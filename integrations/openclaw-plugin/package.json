@@ -1,0 +1,24 @@
+{
+  "name": "@isbe/openclaw-engram",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "OpenClaw plugin integration for ENGRAM governed memory.",
+  "main": "./index.js",
+  "openclaw": {
+    "extensions": ["./index.js"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    }
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24-beta.2"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.41"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

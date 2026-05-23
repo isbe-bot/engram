@@ -156,11 +156,14 @@ Supported environment overrides:
 - Rotate API keys by changing `server.api_key` or `ENGRAM_API_KEY`, restarting `engramd`, then updating clients. Avoid logging or committing tokens.
 - Prefer backup/restore workflows over direct SQLite edits.
 
-## OpenClaw integration example
+## OpenClaw integration
 
-ENGRAM can be used as OpenClaw's semantic memory sidecar by routing an OpenClaw memory search script through `engramctl`.
+ENGRAM can be used as OpenClaw's governed semantic memory sidecar in two ways:
 
-A minimal adapter is provided at:
+1. **Native OpenClaw plugin** — preferred when plugin install is available. [`integrations/openclaw-plugin/`](integrations/openclaw-plugin/) registers ENGRAM as a memory corpus supplement plus `engram_status`, `engram_search`, `engram_get`, and optional `engram_curate` tools. See [`docs/OPENCLAW_PLUGIN.md`](docs/OPENCLAW_PLUGIN.md).
+2. **Script adapter** — compatibility path for existing memory wrapper scripts.
+
+The script adapter is provided at:
 
 ```text
 examples/openclaw/mem-search-engram.js
@@ -174,7 +177,7 @@ ENGRAM_CONFIG=/etc/engram/engram.yaml \
 node examples/openclaw/mem-search-engram.js "project decision" --json --limit 5
 ```
 
-The adapter preserves ENGRAM's API key handling, citations, confidence filters, and Qdrant-backed recall while keeping OpenClaw integration script-friendly.
+Both paths preserve ENGRAM's API key handling, citations, confidence filters, and Qdrant-backed recall. The plugin tries HTTP first and safely falls back to `engramctl` when configured.
 
 ## Current API (v1 bootstrap)
 
@@ -294,7 +297,7 @@ Governance behavior includes quality guardrails:
 - high-confidence memories (`confidence >= 0.90`) are immutable unless `force=true` is explicitly provided
 - memory object events include hash-chain audit fields (`prev_hash`, `event_hash`) for tamper-evidence
 
-See `docs/API.md` for a clean API reference and `docs/openapi.yaml` for a compact OpenAPI spec.
+See `docs/API.md` for a clean API reference, `docs/openapi.yaml` for a compact OpenAPI spec, and `docs/OPENCLAW_PLUGIN.md` for native OpenClaw plugin setup.
 
 ## Project layout
 ```text

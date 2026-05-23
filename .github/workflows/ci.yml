@@ -42,6 +42,9 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: OpenClaw plugin unit tests
+        run: node --test integrations/openclaw-plugin/test/*.test.js
+
       - name: Race tests
         run: go test -race ./...
 
