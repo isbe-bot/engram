@@ -40,7 +40,7 @@ func main() {
 	ingestSvc := ingest.NewService(store)
 	curateSvc := curate.NewService(store)
 	governSvc := govern.NewService(store)
-	retrieveSvc := retrieve.NewService(store)
+	retrieveSvc := retrieve.NewService(store, store)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

@@ -22,7 +22,7 @@ make test
 - `POST /v1/memory/curate`
 - `POST /v1/memory/{object_id}/correct`
 - `POST /v1/memory/{object_id}/deprecate`
-- `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>`
+- `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>&cursor=<offset>&include_events=<true|false>`
 
 ### Example ingest + curate + governance + search
 
@@ -60,12 +60,15 @@ curl -s -X POST http://127.0.0.1:8787/v1/memory/mem-1/deprecate \
   -H 'content-type: application/json' \
   -d '{"reason":"superseded by revised architecture"}'
 
-curl -s 'http://127.0.0.1:8787/v1/memory/search?q=Go&status=accepted&min_confidence=0.9&limit=10'
+curl -s 'http://127.0.0.1:8787/v1/memory/search?q=Go&status=accepted&min_confidence=0.9&limit=10&include_events=true'
 ```
 
-Search results include `citations` for each memory object:
-- canonical memory path: `memory_objects/{object_id}`
-- all linked `source_refs`
+Search responses include:
+- `rank_score` (lightweight relevance ranking)
+- `next_cursor` (offset pagination cursor for memory-object results)
+- `citations` for each result:
+  - memory objects: `memory_objects/{object_id}` + linked `source_refs`
+  - event hits: `ingested_events/{event_id}`
 
 ## Project layout
 ```text

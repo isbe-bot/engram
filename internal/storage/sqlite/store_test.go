@@ -158,7 +158,7 @@ func TestSearchMemoryObjectsWithFiltersAndCitations(t *testing.T) {
 		t.Fatalf("create mem-b: %v", err)
 	}
 
-	results, err := store.SearchMemoryObjects(ctx, retrieve.Query{Text: "Go", Status: models.MemoryStatusAccepted, MinConfidence: 0.9, Limit: 10})
+	results, nextCursor, err := store.SearchMemoryObjects(ctx, retrieve.Query{Text: "Go", Status: models.MemoryStatusAccepted, MinConfidence: 0.9, Limit: 1})
 	if err != nil {
 		t.Fatalf("search memory objects: %v", err)
 	}
@@ -168,11 +168,35 @@ func TestSearchMemoryObjectsWithFiltersAndCitations(t *testing.T) {
 	if got := results[0]["object_id"]; got != "mem-a" {
 		t.Fatalf("unexpected object_id %v", got)
 	}
-	citations, ok := results[0]["citations"].([]map[string]any)
-	if !ok {
-		t.Fatalf("expected citations array, got %T", results[0]["citations"])
+	if nextCursor != "" {
+		t.Fatalf("did not expect next cursor for single-match page, got %q", nextCursor)
 	}
-	if len(citations) == 0 {
-		t.Fatal("expected citations to be populated")
+	if _, ok := results[0]["citations"].([]map[string]any); !ok {
+		if alt, ok2 := results[0]["citations"].([]any); ok2 {
+			if len(alt) == 0 {
+				t.Fatal("expected citations to be populated")
+			}
+		} else {
+			t.Fatalf("expected citations array, got %T", results[0]["citations"])
+		}
+	}
+
+	page1, page1Cursor, err := store.SearchMemoryObjects(ctx, retrieve.Query{Limit: 1})
+	if err != nil {
+		t.Fatalf("search memory objects page1: %v", err)
+	}
+	if len(page1) != 1 || page1Cursor == "" {
+		t.Fatalf("expected page1 len=1 and non-empty cursor, got len=%d cursor=%q", len(page1), page1Cursor)
+	}
+
+	page2, page2Cursor, err := store.SearchMemoryObjects(ctx, retrieve.Query{Limit: 1, Cursor: page1Cursor})
+	if err != nil {
+		t.Fatalf("search memory objects page2: %v", err)
+	}
+	if len(page2) != 1 {
+		t.Fatalf("expected page2 len=1, got %d", len(page2))
+	}
+	if page2Cursor != "" {
+		t.Fatalf("expected empty page2 cursor, got %q", page2Cursor)
 	}
 }

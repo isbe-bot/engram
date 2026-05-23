@@ -19,7 +19,7 @@ type ingestor interface {
 }
 
 type searcher interface {
-	Search(ctx context.Context, q retrieve.Query) ([]map[string]any, error)
+	Search(ctx context.Context, q retrieve.Query) (retrieve.Response, error)
 }
 
 type curator interface {
@@ -119,6 +119,9 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 
 		queryText := strings.TrimSpace(r.URL.Query().Get("q"))
 		status := strings.TrimSpace(r.URL.Query().Get("status"))
+		cursor := strings.TrimSpace(r.URL.Query().Get("cursor"))
+		includeEvents := parseBoolQuery(strings.TrimSpace(r.URL.Query().Get("include_events")))
+
 		limit := 20
 		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 			if v, err := strconv.Atoi(raw); err == nil {
@@ -132,20 +135,30 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 			}
 		}
 
-		results, err := deps.Search.Search(r.Context(), retrieve.Query{
+		resp, err := deps.Search.Search(r.Context(), retrieve.Query{
 			Text:          queryText,
 			Status:        status,
 			MinConfidence: minConfidence,
 			Limit:         limit,
+			Cursor:        cursor,
+			IncludeEvents: includeEvents,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"results": results,
-			"count":   len(results),
-			"filters": map[string]any{"q": queryText, "status": status, "min_confidence": minConfidence, "limit": limit},
+			"results":     resp.Results,
+			"count":       len(resp.Results),
+			"next_cursor": resp.NextCursor,
+			"filters": map[string]any{
+				"q":              queryText,
+				"status":         status,
+				"min_confidence": minConfidence,
+				"limit":          limit,
+				"cursor":         cursor,
+				"include_events": includeEvents,
+			},
 		})
 	})
 
@@ -205,6 +218,15 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		}
 	})
+}
+
+func parseBoolQuery(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload map[string]any) {

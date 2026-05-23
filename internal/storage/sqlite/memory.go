@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -154,14 +155,20 @@ func (s *Store) GetMemoryObject(ctx context.Context, objectID string) (models.Me
 	return obj, nil
 }
 
-func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]map[string]any, error) {
+func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]map[string]any, string, error) {
 	if s == nil || s.db == nil {
-		return nil, fmt.Errorf("sqlite store is not initialized")
+		return nil, "", fmt.Errorf("sqlite store is not initialized")
 	}
 
 	limit := q.Limit
 	if limit <= 0 || limit > 100 {
 		limit = 20
+	}
+	offset := 0
+	if strings.TrimSpace(q.Cursor) != "" {
+		if parsed, err := strconv.Atoi(strings.TrimSpace(q.Cursor)); err == nil && parsed >= 0 {
+			offset = parsed
+		}
 	}
 
 	filters := make([]string, 0)
@@ -189,12 +196,13 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 	if len(filters) > 0 {
 		sqlText += " WHERE " + strings.Join(filters, " AND ")
 	}
-	sqlText += ` ORDER BY updated_at DESC LIMIT ?`
-	args = append(args, limit)
+	queryLimit := limit + 1
+	sqlText += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+	args = append(args, queryLimit, offset)
 
 	rows, err := s.db.QueryContext(ctx, sqlText, args...)
 	if err != nil {
-		return nil, fmt.Errorf("search memory objects: %w", err)
+		return nil, "", fmt.Errorf("search memory objects: %w", err)
 	}
 	defer rows.Close()
 
@@ -214,7 +222,7 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 			sourceRefs     []string
 		)
 		if err := rows.Scan(&objID, &typeName, &schemaVersion, &content, &sourceRefsJSON, &confidence, &classification, &status, &createdAt, &updatedAt); err != nil {
-			return nil, fmt.Errorf("scan memory object result: %w", err)
+			return nil, "", fmt.Errorf("scan memory object result: %w", err)
 		}
 		if sourceRefsJSON != "" {
 			_ = json.Unmarshal([]byte(sourceRefsJSON), &sourceRefs)
@@ -248,10 +256,16 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate memory object results: %w", err)
+		return nil, "", fmt.Errorf("iterate memory object results: %w", err)
 	}
 
-	return results, nil
+	nextCursor := ""
+	if len(results) > limit {
+		results = results[:limit]
+		nextCursor = strconv.Itoa(offset + len(results))
+	}
+
+	return results, nextCursor, nil
 }
 
 func (s *Store) MemoryObjectCount(ctx context.Context) (int, error) {
