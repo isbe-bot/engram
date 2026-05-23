@@ -15,7 +15,10 @@ import (
 	"time"
 
 	"github.com/aileun/engram/internal/config"
+	"github.com/aileun/engram/internal/embedding"
+	"github.com/aileun/engram/internal/index"
 	"github.com/aileun/engram/internal/quality"
+	qdrantstore "github.com/aileun/engram/internal/storage/qdrant"
 	sqlitestore "github.com/aileun/engram/internal/storage/sqlite"
 )
 
@@ -30,7 +33,7 @@ func main() {
 	configPath := fs.String("config", "./configs/example.yaml", "path to config file")
 
 	switch cmd {
-	case "status", "migrate", "quality":
+	case "status", "migrate", "quality", "reindex":
 		_ = fs.Parse(os.Args[2:])
 		runLocalCommand(cmd, *configPath)
 	case "health":
@@ -113,7 +116,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Println("usage: engramctl <status|migrate|quality|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
+	fmt.Println("usage: engramctl <status|migrate|quality|reindex|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
 }
 
 func runLocalCommand(cmd, configPath string) {
@@ -157,7 +160,36 @@ func runLocalCommand(cmd, configPath string) {
 			log.Fatalf("quality metrics: %v", err)
 		}
 		writePrettyJSON(metrics)
+	case "reindex":
+		runReindex(cfg, store)
 	}
+}
+
+func runReindex(cfg config.Config, store *sqlitestore.Store) {
+	if strings.TrimSpace(cfg.Storage.QdrantURL) == "" {
+		log.Fatal("storage.qdrant_url is required for reindex")
+	}
+	if err := store.ApplyMigrations(); err != nil {
+		log.Fatalf("migrations: %v", err)
+	}
+	qdrantClient, err := qdrantstore.New(cfg.Storage.QdrantURL, cfg.Storage.QdrantCollection)
+	if err != nil {
+		log.Fatalf("init qdrant client: %v", err)
+	}
+	indexSvc := index.NewService(qdrantClient, embedding.NewHashProvider(embedding.HashVectorSize), embedding.HashVectorSize)
+	if err := indexSvc.Ensure(context.Background()); err != nil {
+		log.Fatalf("ensure qdrant collection: %v", err)
+	}
+	objects, err := store.ListMemoryObjects(context.Background(), 10000)
+	if err != nil {
+		log.Fatalf("list memory objects: %v", err)
+	}
+	for _, obj := range objects {
+		if err := indexSvc.IndexMemory(context.Background(), obj); err != nil {
+			log.Fatalf("index memory object %s: %v", obj.ObjectID, err)
+		}
+	}
+	writePrettyJSON(map[string]any{"status": "ok", "indexed_count": len(objects), "collection": cfg.Storage.QdrantCollection})
 }
 
 func runAPICommand(configPath, method, path string, body []byte) {

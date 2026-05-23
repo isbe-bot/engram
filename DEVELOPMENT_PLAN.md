@@ -319,3 +319,17 @@ Verification:
 
 - Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.
 - Live hybrid smoke passed with `engramd` + `engramctl` + local Qdrant collection `engram_hybrid_smoke`; search returned `retrieval_source=qdrant` with citations.
+
+### 2026-05-23 — Reindex operator slice
+
+Completed:
+
+- Added SQLite `ListMemoryObjects` helper for operator/indexing workflows.
+- Added `engramctl reindex` to rebuild Qdrant vectors from SQLite memory objects.
+- Updated README with reindex command.
+- Added storage coverage for listing hydrated memory objects.
+
+Verification:
+
+- `engramctl reindex` smoke passed against `/tmp/engram-hybrid-smoke.yaml` and local Qdrant collection `engram_hybrid_smoke`.
+- Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.

@@ -277,6 +277,46 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 	return results, nextCursor, nil
 }
 
+func (s *Store) ListMemoryObjects(ctx context.Context, limit int) ([]models.MemoryObject, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("sqlite store is not initialized")
+	}
+	if limit <= 0 || limit > 10000 {
+		limit = 10000
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT object_id, type, schema_version, content, source_refs_json,
+		       confidence, classification, scope, provenance_hash, status, created_at, updated_at
+		FROM memory_objects
+		ORDER BY updated_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list memory objects: %w", err)
+	}
+	defer rows.Close()
+
+	objects := make([]models.MemoryObject, 0)
+	for rows.Next() {
+		var obj models.MemoryObject
+		var sourceRefsJSON string
+		if err := rows.Scan(&obj.ObjectID, &obj.Type, &obj.SchemaVer, &obj.Content, &sourceRefsJSON, &obj.Confidence, &obj.Classification, &obj.Scope, &obj.ProvenanceHash, &obj.Status, &obj.CreatedAt, &obj.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan memory object: %w", err)
+		}
+		if sourceRefsJSON != "" {
+			_ = json.Unmarshal([]byte(sourceRefsJSON), &obj.SourceRefs)
+		}
+		if obj.SourceRefs == nil {
+			obj.SourceRefs = []string{}
+		}
+		objects = append(objects, obj)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate memory objects: %w", err)
+	}
+	return objects, nil
+}
+
 func (s *Store) ListMemoryObjectEvents(ctx context.Context, objectID, action string, beforeID, limit int) ([]map[string]any, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("sqlite store is not initialized")

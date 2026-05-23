@@ -250,6 +250,17 @@ func TestSearchMemoryObjectsWithFiltersAndCitations(t *testing.T) {
 	if page2Cursor != "" {
 		t.Fatalf("expected empty page2 cursor, got %q", page2Cursor)
 	}
+
+	objects, err := store.ListMemoryObjects(ctx, 100)
+	if err != nil {
+		t.Fatalf("list memory objects: %v", err)
+	}
+	if len(objects) != 2 {
+		t.Fatalf("expected two listed memory objects, got %d", len(objects))
+	}
+	if objects[0].ObjectID == "" || objects[0].ProvenanceHash == "" {
+		t.Fatalf("expected hydrated listed objects, got %+v", objects[0])
+	}
 }
 
 func TestQualityMetricQueries(t *testing.T) {

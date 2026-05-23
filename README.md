@@ -4,7 +4,7 @@ Open-source memory intelligence core for AI agents.
 
 ## Binaries
 - `engramd`: local daemon/service (ingest, curation, retrieval, governance, quality)
-- `engramctl`: operator CLI (status, migrate, quality, health, ingest, curate, search, get, correct, deprecate, history)
+- `engramctl`: operator CLI (status, migrate, quality, reindex, health, ingest, curate, search, get, correct, deprecate, history)
 
 ## Quick start
 ```bash
@@ -14,6 +14,7 @@ make test
 ./bin/engramctl migrate --config ./configs/example.yaml
 ./bin/engramctl status --config ./configs/example.yaml
 ./bin/engramctl health --config ./configs/example.yaml
+./bin/engramctl reindex --config ./configs/example.yaml
 ```
 
 ## Current API (v1 bootstrap)
@@ -137,4 +138,5 @@ This foundation is aligned with `engram-go-service-blueprint-v1.md` and now incl
 - filtered retrieval over curated `memory_objects` with confidence/status controls and citation paths
 - CLI status/migrate/quality commands (event + memory counts, freshness, correction/deprecation rates)
 - API-backed CLI commands for health, ingest, curate, search, get, correct, deprecate, and history
+- operator reindex command to rebuild Qdrant vectors from SQLite memory objects
 - quality metrics endpoint for ingestion freshness, memory counts, audit action counts, and governance rates
