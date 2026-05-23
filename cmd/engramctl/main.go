@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 
 	"github.com/aileun/engram/internal/config"
+	"github.com/aileun/engram/internal/quality"
 	sqlitestore "github.com/aileun/engram/internal/storage/sqlite"
 )
 
@@ -53,7 +55,19 @@ func main() {
 		}
 		fmt.Printf("engramctl migrate OK (sqlite=%s)\n", cfg.Storage.SQLitePath)
 	case "quality":
-		fmt.Printf("engramctl quality TODO (interval=%s)\n", cfg.Quality.EvalInterval)
+		if err := store.ApplyMigrations(); err != nil {
+			log.Fatalf("migrations: %v", err)
+		}
+		svc := quality.NewService(store)
+		metrics, err := svc.Metrics(context.Background())
+		if err != nil {
+			log.Fatalf("quality metrics: %v", err)
+		}
+		out, err := json.MarshalIndent(metrics, "", "  ")
+		if err != nil {
+			log.Fatalf("marshal metrics: %v", err)
+		}
+		fmt.Println(string(out))
 	default:
 		log.Fatalf("unknown command: %s", cmd)
 	}

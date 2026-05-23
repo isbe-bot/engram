@@ -23,11 +23,13 @@ make test
 - `POST /v1/memory/{object_id}/correct` (supports `force=true` for protected high-confidence memory)
 - `POST /v1/memory/{object_id}/deprecate` (supports `force=true` for protected high-confidence memory)
 - `GET /v1/memory/{object_id}/history?limit=<n>&action=<curated|corrected|deprecated>&before=<event_id>`
+- `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>&cursor=<offset>&include_events=<true|false>`
+- `GET /v1/quality/metrics`
 
-Mutation endpoints require signed envelope fields:
+Governance mutation endpoints require signed envelope fields:
 - `envelope.actor_id`
 - `envelope.mutation_id`
-- `envelope.signature`- `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>&cursor=<offset>&include_events=<true|false>`
+- `envelope.signature`
 
 ### Example ingest + curate + governance + search
 
@@ -66,6 +68,8 @@ curl -s -X POST http://127.0.0.1:8787/v1/memory/mem-1/deprecate \
   -d '{"reason":"superseded by revised architecture"}'
 
 curl -s 'http://127.0.0.1:8787/v1/memory/search?q=Go&status=accepted&min_confidence=0.9&limit=10&include_events=true'
+
+curl -s http://127.0.0.1:8787/v1/quality/metrics
 ```
 
 Search responses include:
@@ -98,4 +102,5 @@ This foundation is aligned with `engram-go-service-blueprint-v1.md` and now incl
 - migration runner (embedded SQL)
 - curation and governance endpoints (`curate`, `correct`, `deprecate`)
 - filtered retrieval over curated `memory_objects` with confidence/status controls and citation paths
-- CLI status/migrate commands (event + memory counts)
+- CLI status/migrate/quality commands (event + memory counts, freshness, correction/deprecation rates)
+- quality metrics endpoint for ingestion freshness, memory counts, audit action counts, and governance rates

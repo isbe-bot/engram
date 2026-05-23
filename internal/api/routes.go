@@ -10,6 +10,7 @@ import (
 
 	"github.com/aileun/engram/internal/events"
 	"github.com/aileun/engram/internal/models"
+	"github.com/aileun/engram/internal/quality"
 	"github.com/aileun/engram/internal/retrieve"
 	"github.com/aileun/engram/pkg/contracts"
 )
@@ -20,6 +21,10 @@ type ingestor interface {
 
 type searcher interface {
 	Search(ctx context.Context, q retrieve.Query) (retrieve.Response, error)
+}
+
+type qualityReporter interface {
+	Metrics(ctx context.Context) (quality.Snapshot, error)
 }
 
 type curator interface {
@@ -161,6 +166,23 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 				"include_events": includeEvents,
 			},
 		})
+	})
+
+	mux.HandleFunc("/v1/quality/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+			return
+		}
+		if deps.Quality == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "quality service unavailable"})
+			return
+		}
+		metrics, err := deps.Quality.Metrics(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"metrics": metrics})
 	})
 
 	mux.HandleFunc("/v1/memory/", func(w http.ResponseWriter, r *http.Request) {

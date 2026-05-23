@@ -10,11 +10,12 @@ import (
 )
 
 type Dependencies struct {
-	Ingest ingestor
-	Curate curator
-	Govern governor
-	Search searcher
-	Health pinger
+	Ingest  ingestor
+	Curate  curator
+	Govern  governor
+	Search  searcher
+	Quality qualityReporter
+	Health  pinger
 }
 
 type Server struct {

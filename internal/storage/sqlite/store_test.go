@@ -206,6 +206,62 @@ func TestSearchMemoryObjectsWithFiltersAndCitations(t *testing.T) {
 	}
 }
 
+func TestQualityMetricQueries(t *testing.T) {
+	ctx := context.Background()
+	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := store.InsertEvent(ctx, events.Envelope{EventID: "evt-q1", EventType: "task.completed", EnvironmentID: "env-q", OccurredAt: now, Data: map[string]any{"ok": true}}); err != nil {
+		t.Fatalf("insert event: %v", err)
+	}
+	obj := models.MemoryObject{
+		ObjectID:       "mem-q1",
+		Type:           "decision",
+		SchemaVer:      "v1",
+		Content:        "Track quality metrics",
+		SourceRefs:     []string{"spec:quality"},
+		Confidence:     0.88,
+		Classification: "product",
+		Status:         models.MemoryStatusAccepted,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if _, err := store.CreateMemoryObject(ctx, obj, testEnv("mut-q1")); err != nil {
+		t.Fatalf("create memory object: %v", err)
+	}
+	if _, err := store.CorrectMemoryObject(ctx, obj.ObjectID, "Track quality and freshness metrics", "Clarify quality metric coverage", []string{"spec:quality"}, testEnv("mut-q2")); err != nil {
+		t.Fatalf("correct memory object: %v", err)
+	}
+
+	statusCounts, err := store.MemoryStatusCounts(ctx)
+	if err != nil {
+		t.Fatalf("status counts: %v", err)
+	}
+	if statusCounts[models.MemoryStatusAccepted] != 1 {
+		t.Fatalf("expected accepted count=1, got %+v", statusCounts)
+	}
+	actionCounts, err := store.MemoryAuditActionCounts(ctx)
+	if err != nil {
+		t.Fatalf("action counts: %v", err)
+	}
+	if actionCounts["curated"] != 1 || actionCounts["corrected"] != 1 {
+		t.Fatalf("unexpected action counts: %+v", actionCounts)
+	}
+	if latest, ok, err := store.LatestIngestedEventAt(ctx); err != nil || !ok || latest != now {
+		t.Fatalf("unexpected latest ingested event: latest=%q ok=%v err=%v", latest, ok, err)
+	}
+	if latest, ok, err := store.LatestMemoryUpdatedAt(ctx); err != nil || !ok || latest == "" {
+		t.Fatalf("unexpected latest memory update: latest=%q ok=%v err=%v", latest, ok, err)
+	}
+}
+
 func TestListMemoryObjectEventsFilters(t *testing.T) {
 	ctx := context.Background()
 	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))

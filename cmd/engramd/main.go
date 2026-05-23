@@ -13,6 +13,7 @@ import (
 	"github.com/aileun/engram/internal/curate"
 	"github.com/aileun/engram/internal/govern"
 	"github.com/aileun/engram/internal/ingest"
+	"github.com/aileun/engram/internal/quality"
 	"github.com/aileun/engram/internal/retrieve"
 	sqlitestore "github.com/aileun/engram/internal/storage/sqlite"
 	"github.com/aileun/engram/internal/workers"
@@ -41,6 +42,7 @@ func main() {
 	curateSvc := curate.NewService(store)
 	governSvc := govern.NewService(store)
 	retrieveSvc := retrieve.NewService(store, store)
+	qualitySvc := quality.NewService(store)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -52,11 +54,12 @@ func main() {
 	defer w.Stop(context.Background())
 
 	srv := api.NewServer(cfg, api.Dependencies{
-		Ingest: ingestSvc,
-		Curate: curateSvc,
-		Govern: governSvc,
-		Search: retrieveSvc,
-		Health: store,
+		Ingest:  ingestSvc,
+		Curate:  curateSvc,
+		Govern:  governSvc,
+		Search:  retrieveSvc,
+		Quality: qualitySvc,
+		Health:  store,
 	})
 	if err := srv.Start(ctx); err != nil {
 		log.Fatalf("server error: %v", err)
