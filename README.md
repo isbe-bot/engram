@@ -22,6 +22,7 @@ make test
 - `POST /v1/memory/curate`
 - `POST /v1/memory/{object_id}/correct`
 - `POST /v1/memory/{object_id}/deprecate`
+- `GET /v1/memory/{object_id}/history?limit=<n>`
 - `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>&cursor=<offset>&include_events=<true|false>`
 
 ### Example ingest + curate + governance + search
@@ -66,9 +67,13 @@ curl -s 'http://127.0.0.1:8787/v1/memory/search?q=Go&status=accepted&min_confide
 Search responses include:
 - `rank_score` (lightweight relevance ranking)
 - `next_cursor` (offset pagination cursor for memory-object results)
+- deterministic citation IDs
 - `citations` for each result:
   - memory objects: `memory_objects/{object_id}` + linked `source_refs`
   - event hits: `ingested_events/{event_id}`
+
+Governance behavior includes quality guardrails:
+- correction/deprecation reasons must be sufficiently descriptive (not vague one-word reasons like `fix`)
 
 ## Project layout
 ```text

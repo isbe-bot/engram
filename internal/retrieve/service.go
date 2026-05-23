@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/aileun/engram/internal/citations"
 )
 
 type SearchResult = map[string]any
@@ -72,10 +74,7 @@ func (s *Service) Search(ctx context.Context, q Query) (Response, error) {
 			eventID := strings.TrimSpace(asString(ev["event_id"]))
 			ev["retrieval_source"] = "ingested_events"
 			ev["rank_score"] = scoreEvent(ev, q)
-			ev["citations"] = []map[string]any{{
-				"kind": "event",
-				"path": "ingested_events/" + eventID,
-			}}
+			ev["citations"] = []map[string]any{citations.Make("event", "ingested_events/"+eventID)}
 			results = append(results, ev)
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aileun/engram/internal/citations"
 	"github.com/aileun/engram/internal/models"
 	"github.com/aileun/engram/internal/retrieve"
 )
@@ -231,13 +232,10 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 			sourceRefs = []string{}
 		}
 
-		citations := make([]map[string]any, 0, len(sourceRefs)+1)
-		citations = append(citations, map[string]any{
-			"kind": "memory_object",
-			"path": "memory_objects/" + objID,
-		})
+		citationsList := make([]map[string]any, 0, len(sourceRefs)+1)
+		citationsList = append(citationsList, citations.Make("memory_object", "memory_objects/"+objID))
 		for _, ref := range sourceRefs {
-			citations = append(citations, map[string]any{"kind": "source_ref", "path": ref})
+			citationsList = append(citationsList, citations.Make("source_ref", ref))
 		}
 
 		results = append(results, map[string]any{
@@ -251,7 +249,7 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 			"status":           status,
 			"created_at":       createdAt,
 			"updated_at":       updatedAt,
-			"citations":        citations,
+			"citations":        citationsList,
 			"retrieval_source": "memory_objects",
 		})
 	}
@@ -266,6 +264,65 @@ func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]ma
 	}
 
 	return results, nextCursor, nil
+}
+
+func (s *Store) ListMemoryObjectEvents(ctx context.Context, objectID string, limit int) ([]map[string]any, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("sqlite store is not initialized")
+	}
+	objectID = strings.TrimSpace(objectID)
+	if objectID == "" {
+		return nil, fmt.Errorf("object_id is required")
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, action, reason, payload_json, created_at
+		FROM memory_object_events
+		WHERE object_id = ?
+		ORDER BY id DESC
+		LIMIT ?
+	`, objectID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list memory object events: %w", err)
+	}
+	defer rows.Close()
+
+	events := make([]map[string]any, 0)
+	for rows.Next() {
+		var (
+			id         int
+			action     string
+			reason     string
+			payload    string
+			createdAt  string
+			payloadMap map[string]any
+		)
+		if err := rows.Scan(&id, &action, &reason, &payload, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan memory object event: %w", err)
+		}
+		if payload != "" {
+			_ = json.Unmarshal([]byte(payload), &payloadMap)
+		}
+		if payloadMap == nil {
+			payloadMap = map[string]any{}
+		}
+		events = append(events, map[string]any{
+			"id":         id,
+			"object_id":  objectID,
+			"action":     action,
+			"reason":     reason,
+			"payload":    payloadMap,
+			"created_at": createdAt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate memory object events: %w", err)
+	}
+
+	return events, nil
 }
 
 func (s *Store) MemoryObjectCount(ctx context.Context) (int, error) {

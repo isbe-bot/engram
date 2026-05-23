@@ -29,6 +29,7 @@ type curator interface {
 type governor interface {
 	Correct(ctx context.Context, objectID string, req contracts.MemoryCorrectRequest) (models.MemoryObject, error)
 	Deprecate(ctx context.Context, objectID string, req contracts.MemoryDeprecateRequest) (models.MemoryObject, error)
+	History(ctx context.Context, objectID string, limit int) ([]map[string]any, error)
 }
 
 type pinger interface {
@@ -167,10 +168,6 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "govern service unavailable"})
 			return
 		}
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
-			return
-		}
 
 		path := strings.TrimPrefix(r.URL.Path, "/v1/memory/")
 		parts := strings.Split(path, "/")
@@ -182,7 +179,32 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		action := parts[1]
 
 		switch action {
+		case "history":
+			if r.Method != http.MethodGet {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+				return
+			}
+			limit := 50
+			if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+				if v, err := strconv.Atoi(raw); err == nil {
+					limit = v
+				}
+			}
+			events, err := deps.Govern.History(r.Context(), objectID, limit)
+			if err != nil {
+				status := http.StatusBadRequest
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					status = http.StatusNotFound
+				}
+				writeJSON(w, status, map[string]any{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"object_id": objectID, "count": len(events), "events": events})
 		case "correct":
+			if r.Method != http.MethodPost {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+				return
+			}
 			var req contracts.MemoryCorrectRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
@@ -199,6 +221,10 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "memory": obj})
 		case "deprecate":
+			if r.Method != http.MethodPost {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+				return
+			}
 			var req contracts.MemoryDeprecateRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
