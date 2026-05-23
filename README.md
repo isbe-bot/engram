@@ -179,6 +179,59 @@ node examples/openclaw/mem-search-engram.js "project decision" --json --limit 5
 
 Both paths preserve ENGRAM's API key handling, citations, confidence filters, and Qdrant-backed recall. The plugin tries HTTP first and safely falls back to `engramctl` when configured.
 
+### Prompt for installing ENGRAM with OpenClaw
+
+Copy/paste this into an OpenClaw session on the target host:
+
+```text
+You are installing ENGRAM, a local-first governed memory daemon and CLI for OpenClaw.
+
+Goal:
+Install ENGRAM from https://github.com/isbe-bot/engram, run it as a local sidecar, verify health/search, and optionally enable the native OpenClaw plugin.
+
+Rules:
+- Act on this host. Do not ask me to run commands unless you are blocked by permissions.
+- Do not expose ENGRAM publicly. Keep it bound to 127.0.0.1 unless I explicitly approve otherwise.
+- Use scoped API tokens: read for search/get, write for ingest/curate, admin only for operators.
+- Preserve existing data/config if ENGRAM is already installed. Back up before replacing binaries or config.
+- Prefer systemd user service for a per-user OpenClaw sidecar; use system service only if this host is intentionally managed that way.
+- Verify every step with commands and report exact paths, service status, and health output.
+
+Steps:
+1. Inspect the host: OS, architecture, Go version, git, systemd availability, OpenClaw workspace path, and whether `engramd` / `engramctl` already exist.
+2. Clone or update the repo:
+   - If no checkout exists: `git clone https://github.com/isbe-bot/engram.git ~/engram`
+   - If a checkout exists: fetch/pull safely after checking `git status`.
+3. Build:
+   - `make build`
+   - Verify `./bin/engramd` and `./bin/engramctl` exist.
+4. Initialize local config/data if missing:
+   - `./bin/engramctl init --config ~/.config/engram/engram.yaml --data-dir ~/.local/share/engram --read-api-key <generate-read-token> --write-api-key <generate-write-token> --admin-api-key <generate-admin-token>`
+   - Generate strong random tokens locally. Do not print full secrets in chat; store them securely.
+5. Install binaries:
+   - `install -m 0755 ./bin/engramd ~/.local/bin/engramd`
+   - `install -m 0755 ./bin/engramctl ~/.local/bin/engramctl`
+6. Create or update a systemd user service for `engramd` using `~/.local/bin/engramd --config ~/.config/engram/engram.yaml`.
+7. Start and verify:
+   - `systemctl --user daemon-reload`
+   - `systemctl --user enable --now engramd.service`
+   - `systemctl --user is-active engramd.service`
+   - `~/.local/bin/engramctl health --config ~/.config/engram/engram.yaml`
+   - `~/.local/bin/engramctl status --config ~/.config/engram/engram.yaml`
+8. Run a smoke test:
+   - Curate one non-sensitive test memory with source ref `spec:install-smoke`.
+   - Search for it.
+   - Confirm the result includes citations/provenance.
+9. Optional OpenClaw plugin integration:
+   - Install the local plugin from the checkout: `openclaw plugins install ~/engram/integrations/openclaw-plugin`
+   - Configure plugin `engram` with endpoint `http://127.0.0.1:8787`, the read token, `~/.config/engram/engram.yaml`, and fallbackToCli=true.
+   - Restart OpenClaw only after confirming config changes are valid.
+   - Verify `engram_status` / `engram_search` or the plugin smoke script if available.
+10. Final report:
+   - Repo path, binary paths, config path, data path, service status, health result, memory counts, and whether the OpenClaw plugin was enabled.
+   - Mention any skipped step and why.
+```
+
 ## Current API (v1 bootstrap)
 
 - `GET /v1/health`
