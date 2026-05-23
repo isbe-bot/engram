@@ -16,6 +16,7 @@ Validate:
 engramctl health --config /etc/engram/engram.yaml
 engramctl status --config /etc/engram/engram.yaml
 engramctl quality --config /etc/engram/engram.yaml
+engramctl retention --config /etc/engram/engram.yaml
 ```
 
 ## Upgrade
@@ -35,6 +36,22 @@ Run after Qdrant collection changes, embedding changes, or restore:
 ```bash
 engramctl reindex --config /etc/engram/engram.yaml
 ```
+
+## Retention and compaction
+
+Always review the report before applying cleanup:
+
+```bash
+engramctl retention --config /etc/engram/engram.yaml
+```
+
+If the report is acceptable, compact explicit cleanup candidates:
+
+```bash
+engramctl compact --config /etc/engram/engram.yaml --apply
+```
+
+`compact --apply` deletes old raw ingested events and old deprecated memory objects only. Accepted stale memory is review-only and must be corrected/deprecated by a governed workflow before it can become a delete candidate.
 
 ## Backup
 

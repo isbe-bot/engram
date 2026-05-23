@@ -21,6 +21,7 @@ type Config struct {
 	Storage   StorageConfig   `yaml:"storage"`
 	Ingestion IngestionConfig `yaml:"ingestion"`
 	Quality   QualityConfig   `yaml:"quality"`
+	Retention RetentionConfig `yaml:"retention"`
 }
 
 type ServerConfig struct {
@@ -53,6 +54,13 @@ type QualityConfig struct {
 	EvalInterval string `yaml:"eval_interval"`
 }
 
+type RetentionConfig struct {
+	EventRetentionDays            int `yaml:"event_retention_days"`
+	DeprecatedMemoryRetentionDays int `yaml:"deprecated_memory_retention_days"`
+	StaleMemoryDays               int `yaml:"stale_memory_days"`
+	MaxCandidates                 int `yaml:"max_candidates"`
+}
+
 func Load(path string) (Config, error) {
 	cfg := Defaults()
 	b, err := os.ReadFile(path)
@@ -79,6 +87,10 @@ func Defaults() Config {
 	cfg.Ingestion.MaxBatchSize = 200
 	cfg.Ingestion.WorkerCount = 1
 	cfg.Quality.EvalInterval = "24h"
+	cfg.Retention.EventRetentionDays = 90
+	cfg.Retention.DeprecatedMemoryRetentionDays = 180
+	cfg.Retention.StaleMemoryDays = 30
+	cfg.Retention.MaxCandidates = 1000
 	return cfg
 }
 
@@ -95,6 +107,10 @@ func (c *Config) ApplyEnv() {
 	setInt(&c.Ingestion.MaxBatchSize, "ENGRAM_MAX_BATCH_SIZE")
 	setInt(&c.Ingestion.WorkerCount, "ENGRAM_WORKER_COUNT")
 	setString(&c.Quality.EvalInterval, "ENGRAM_QUALITY_EVAL_INTERVAL")
+	setInt(&c.Retention.EventRetentionDays, "ENGRAM_RETENTION_EVENT_DAYS")
+	setInt(&c.Retention.DeprecatedMemoryRetentionDays, "ENGRAM_RETENTION_DEPRECATED_MEMORY_DAYS")
+	setInt(&c.Retention.StaleMemoryDays, "ENGRAM_RETENTION_STALE_MEMORY_DAYS")
+	setInt(&c.Retention.MaxCandidates, "ENGRAM_RETENTION_MAX_CANDIDATES")
 }
 
 func (c Config) Validate() error {
@@ -136,6 +152,18 @@ func (c Config) Validate() error {
 	}
 	if c.Ingestion.WorkerCount <= 0 {
 		return fmt.Errorf("ingestion.worker_count must be > 0")
+	}
+	if c.Retention.EventRetentionDays <= 0 {
+		return fmt.Errorf("retention.event_retention_days must be > 0")
+	}
+	if c.Retention.DeprecatedMemoryRetentionDays <= 0 {
+		return fmt.Errorf("retention.deprecated_memory_retention_days must be > 0")
+	}
+	if c.Retention.StaleMemoryDays <= 0 {
+		return fmt.Errorf("retention.stale_memory_days must be > 0")
+	}
+	if c.Retention.MaxCandidates <= 0 {
+		return fmt.Errorf("retention.max_candidates must be > 0")
 	}
 	return nil
 }

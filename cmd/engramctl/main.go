@@ -21,6 +21,7 @@ import (
 	"github.com/isbe-bot/engram/internal/index"
 	"github.com/isbe-bot/engram/internal/models"
 	"github.com/isbe-bot/engram/internal/quality"
+	"github.com/isbe-bot/engram/internal/retention"
 	qdrantstore "github.com/isbe-bot/engram/internal/storage/qdrant"
 	sqlitestore "github.com/isbe-bot/engram/internal/storage/sqlite"
 	"github.com/isbe-bot/engram/pkg/contracts"
@@ -40,6 +41,14 @@ func main() {
 	case "status", "migrate", "quality", "report", "reindex":
 		_ = fs.Parse(os.Args[2:])
 		runLocalCommand(cmd, *configPath)
+	case "retention", "compact":
+		apply := fs.Bool("apply", false, "apply safe retention cleanup; default is report-only")
+		eventDays := fs.Int("event-retention-days", 0, "override raw event retention days")
+		deprecatedDays := fs.Int("deprecated-memory-retention-days", 0, "override deprecated memory retention days")
+		staleDays := fs.Int("stale-memory-days", 0, "override stale accepted-memory review days")
+		maxCandidates := fs.Int("max-candidates", 0, "override maximum candidates shown in report")
+		_ = fs.Parse(os.Args[2:])
+		runRetention(*configPath, *apply, retention.Policy{EventRetentionDays: *eventDays, DeprecatedMemoryRetentionDays: *deprecatedDays, StaleMemoryDays: *staleDays, MaxCandidates: *maxCandidates})
 	case "export":
 		out := fs.String("out", "-", "output JSONL path; use - for stdout")
 		includeEvents := fs.Bool("include-events", true, "include ingested events")
@@ -165,7 +174,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Println("usage: engramctl <init|status|migrate|quality|report|reindex|export|import|backup|restore|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
+	fmt.Println("usage: engramctl <init|status|migrate|quality|report|retention|compact|reindex|export|import|backup|restore|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
 }
 
 const portableVersion = "engram.portable.v1"
@@ -239,6 +248,12 @@ ingestion:
 
 quality:
   eval_interval: "24h"
+
+retention:
+  event_retention_days: 90
+  deprecated_memory_retention_days: 180
+  stale_memory_days: 30
+  max_candidates: 1000
 `, strings.TrimSpace(opts.Bind), opts.Port, strings.TrimSpace(opts.APIKey), apiKeysYAML, sqlitePath, strings.TrimSpace(opts.QdrantURL), qdrantCollection)
 
 	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
@@ -329,6 +344,45 @@ func runLocalCommand(cmd, configPath string) {
 	case "reindex":
 		runReindex(cfg, store)
 	}
+}
+
+func runRetention(configPath string, apply bool, overrides retention.Policy) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+	store, err := sqlitestore.New(cfg.Storage.SQLitePath)
+	if err != nil {
+		log.Fatalf("init sqlite store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		log.Fatalf("migrations: %v", err)
+	}
+	policy := retention.Policy{
+		EventRetentionDays:            cfg.Retention.EventRetentionDays,
+		DeprecatedMemoryRetentionDays: cfg.Retention.DeprecatedMemoryRetentionDays,
+		StaleMemoryDays:               cfg.Retention.StaleMemoryDays,
+		MaxCandidates:                 cfg.Retention.MaxCandidates,
+	}
+	if overrides.EventRetentionDays > 0 {
+		policy.EventRetentionDays = overrides.EventRetentionDays
+	}
+	if overrides.DeprecatedMemoryRetentionDays > 0 {
+		policy.DeprecatedMemoryRetentionDays = overrides.DeprecatedMemoryRetentionDays
+	}
+	if overrides.StaleMemoryDays > 0 {
+		policy.StaleMemoryDays = overrides.StaleMemoryDays
+	}
+	if overrides.MaxCandidates > 0 {
+		policy.MaxCandidates = overrides.MaxCandidates
+	}
+	svc := retention.NewService(store)
+	report, err := svc.Report(context.Background(), policy, apply)
+	if err != nil {
+		log.Fatalf("retention report: %v", err)
+	}
+	writePrettyJSON(report)
 }
 
 func runExport(configPath, outPath string, includeMemory, includeEvents bool, limit int) {

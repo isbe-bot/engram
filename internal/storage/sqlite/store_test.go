@@ -8,6 +8,7 @@ import (
 
 	"github.com/isbe-bot/engram/internal/events"
 	"github.com/isbe-bot/engram/internal/models"
+	"github.com/isbe-bot/engram/internal/retention"
 	"github.com/isbe-bot/engram/internal/retrieve"
 	"github.com/isbe-bot/engram/pkg/contracts"
 )
@@ -286,6 +287,64 @@ func TestSearchMemoryObjectsWithFiltersAndCitations(t *testing.T) {
 	}
 	if objects[0].ObjectID == "" || objects[0].ProvenanceHash == "" {
 		t.Fatalf("expected hydrated listed objects, got %+v", objects[0])
+	}
+}
+
+func TestRetentionCandidatesAndApply(t *testing.T) {
+	ctx := context.Background()
+	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.ApplyMigrations(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	now := time.Date(2026, 5, 23, 20, 30, 0, 0, time.UTC)
+	old := now.Add(-120 * 24 * time.Hour).Format(time.RFC3339)
+	recent := now.Add(-2 * 24 * time.Hour).Format(time.RFC3339)
+	if err := store.InsertEvent(ctx, events.Envelope{EventID: "evt-old", EventType: "retention.old", EnvironmentID: "env", OccurredAt: old, Data: map[string]any{"old": true}}); err != nil {
+		t.Fatalf("insert old event: %v", err)
+	}
+	if err := store.InsertEvent(ctx, events.Envelope{EventID: "evt-recent", EventType: "retention.recent", EnvironmentID: "env", OccurredAt: recent, Data: map[string]any{"recent": true}}); err != nil {
+		t.Fatalf("insert recent event: %v", err)
+	}
+	deprecated := models.MemoryObject{ObjectID: "mem-deprecated-old", Type: "fact", SchemaVer: "v1", Content: "Deprecated old memory", SourceRefs: []string{"spec:retention"}, Confidence: 0.7, Classification: "operations", Scope: "local", Status: models.MemoryStatusDeprecated, CreatedAt: old, UpdatedAt: old}
+	if _, err := store.CreateMemoryObject(ctx, deprecated, testEnv("ret-dep")); err != nil {
+		t.Fatalf("create deprecated memory: %v", err)
+	}
+	stale := models.MemoryObject{ObjectID: "mem-stale", Type: "fact", SchemaVer: "v1", Content: "Accepted stale memory", SourceRefs: []string{"spec:retention"}, Confidence: 0.7, Classification: "operations", Scope: "local", Status: models.MemoryStatusAccepted, CreatedAt: old, UpdatedAt: old}
+	if _, err := store.CreateMemoryObject(ctx, stale, testEnv("ret-stale")); err != nil {
+		t.Fatalf("create stale memory: %v", err)
+	}
+
+	policy := retention.Policy{EventRetentionDays: 90, DeprecatedMemoryRetentionDays: 90, StaleMemoryDays: 30, MaxCandidates: 10}
+	candidates, summary, err := store.RetentionCandidates(ctx, policy, now)
+	if err != nil {
+		t.Fatalf("retention candidates: %v", err)
+	}
+	if summary.RawEventDeleteCandidates != 1 || summary.DeprecatedMemoryDeleteCandidates != 1 || summary.StaleMemoryReviewCandidates != 1 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+	if len(candidates) != 3 {
+		t.Fatalf("expected 3 candidates, got %+v", candidates)
+	}
+	applied, err := store.ApplyRetention(ctx, policy, now)
+	if err != nil {
+		t.Fatalf("apply retention: %v", err)
+	}
+	if applied.DeletedRawEvents != 1 || applied.DeletedDeprecatedMemory != 1 {
+		t.Fatalf("unexpected applied counts: %+v", applied)
+	}
+	if eventCount, err := store.EventCount(ctx); err != nil || eventCount != 1 {
+		t.Fatalf("event count=%d err=%v", eventCount, err)
+	}
+	if memoryCount, err := store.MemoryObjectCount(ctx); err != nil || memoryCount != 1 {
+		t.Fatalf("memory count=%d err=%v", memoryCount, err)
+	}
+	if _, err := store.GetMemoryObject(ctx, "mem-stale"); err != nil {
+		t.Fatalf("stale accepted memory should be review-only, got err=%v", err)
 	}
 }
 

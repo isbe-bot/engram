@@ -89,6 +89,35 @@ Search results include deterministic `citations`, `rank_score`, and `retrieval_s
 
 Allowed source ref prefixes are `adr:`, `chat:`, `spec:`, `meeting:`, `task:`, `event:`, and `doc:`.
 
+## Retention and compaction
+
+`engramctl retention` produces a report-only audit of retention candidates:
+
+```bash
+engramctl retention --config ./configs/example.yaml
+engramctl retention --config ./configs/example.yaml --event-retention-days 120 --deprecated-memory-retention-days 365 --stale-memory-days 45 --max-candidates 100
+```
+
+`engramctl compact --apply` performs safe cleanup:
+
+```bash
+engramctl compact --config ./configs/example.yaml --apply
+```
+
+Cleanup deletes only:
+
+- raw ingested events older than `retention.event_retention_days`;
+- deprecated memory objects older than `retention.deprecated_memory_retention_days`.
+
+Accepted stale memory older than `retention.stale_memory_days` is reported for review but never deleted automatically.
+
+Environment overrides:
+
+- `ENGRAM_RETENTION_EVENT_DAYS`
+- `ENGRAM_RETENTION_DEPRECATED_MEMORY_DAYS`
+- `ENGRAM_RETENTION_STALE_MEMORY_DAYS`
+- `ENGRAM_RETENTION_MAX_CANDIDATES`
+
 ## Portable JSONL
 
 `engramctl export` and `engramctl import` use newline-delimited JSON records for migrations and audits.

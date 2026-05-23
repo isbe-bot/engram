@@ -31,3 +31,13 @@ ingestion:
 
 quality:
   eval_interval: "24h"
+
+retention:
+  # Raw ingested event cleanup threshold. Memory objects remain governed separately.
+  event_retention_days: 90
+  # Deprecated memory objects older than this can be removed by explicit compaction.
+  deprecated_memory_retention_days: 180
+  # Accepted memories older than this are review candidates only; they are not deleted automatically.
+  stale_memory_days: 30
+  # Maximum candidate rows included in a retention/compaction report.
+  max_candidates: 1000

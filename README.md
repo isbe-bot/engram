@@ -11,7 +11,7 @@ Where a simple script-based memory system is usually a pile of cron jobs, markdo
 ENGRAM is a local-first memory intelligence platform composed of:
 
 - **`engramd`** — a daemon that exposes HTTP APIs for ingesting events, curating memory, retrieving cited context, tracking quality, and managing background work.
-- **`engramctl`** — an operator CLI for health checks, migrations, search, curation, correction, history, reindexing, backup, restore, and quality reporting.
+- **`engramctl`** — an operator CLI for health checks, migrations, search, curation, correction, history, reindexing, retention/compaction reports, backup, restore, and quality reporting.
 - **SQLite** — the durable operational ledger for events, memory objects, audit history, worker jobs, checkpoints, and quality samples.
 - **Qdrant** — the semantic retrieval layer for vector search and hybrid recall.
 - **Policy and governance rules** — validation for memory types, scopes, classifications, source references, secret-like content, protected high-confidence memories, and correction/deprecation reasons.
@@ -58,7 +58,7 @@ In practice, this means OpenClaw agents can remember project decisions, user pre
 
 ## Binaries
 - `engramd`: local daemon/service (ingest, curation, retrieval, governance, quality)
-- `engramctl`: operator CLI (status, migrate, quality, report, reindex, backup, restore, health, ingest, curate, search, get, correct, deprecate, history)
+- `engramctl`: operator CLI (status, migrate, quality, report, retention, compact, reindex, backup, restore, health, ingest, curate, search, get, correct, deprecate, history)
 
 ## Quick start
 
@@ -83,6 +83,7 @@ make build
 ./bin/engramctl health --config ./engram.yaml
 ./bin/engramctl reindex --config ./engram.yaml
 ./bin/engramctl report --config ./engram.yaml
+./bin/engramctl retention --config ./engram.yaml
 ./bin/engramctl export --config ./engram.yaml --out ./data/backups/engram-export.jsonl
 ./bin/engramctl backup --config ./engram.yaml --out ./data/backups/engram.sqlite.bak
 ```
@@ -125,6 +126,12 @@ storage:
 ingestion:
   max_batch_size: 200
   worker_count: 2
+
+retention:
+  event_retention_days: 90
+  deprecated_memory_retention_days: 180
+  stale_memory_days: 30
+  max_candidates: 1000
 ```
 
 Supported environment overrides:
@@ -143,6 +150,10 @@ Supported environment overrides:
 - `ENGRAM_MAX_BATCH_SIZE`
 - `ENGRAM_WORKER_COUNT`
 - `ENGRAM_QUALITY_EVAL_INTERVAL`
+- `ENGRAM_RETENTION_EVENT_DAYS`
+- `ENGRAM_RETENTION_DEPRECATED_MEMORY_DAYS`
+- `ENGRAM_RETENTION_STALE_MEMORY_DAYS`
+- `ENGRAM_RETENTION_MAX_CANDIDATES`
 
 ## Production security recommendations
 
@@ -334,6 +345,24 @@ Use canonical JSONL for migrations, audits, and cross-VPS moves:
 
 JSONL records use `kind: "event"` or `kind: "memory_object"` with `version: "engram.portable.v1"`. Imports validate events and memory objects, skip duplicates, and reindex imported memory into Qdrant by default when Qdrant is configured.
 
+### Retention and compaction
+
+ENGRAM separates report-only retention auditing from destructive cleanup:
+
+```bash
+./bin/engramctl retention --config ./configs/example.yaml
+./bin/engramctl retention --config ./configs/example.yaml --event-retention-days 120 --max-candidates 50
+./bin/engramctl compact --config ./configs/example.yaml --apply
+```
+
+The report lists:
+
+- raw ingested events old enough to delete;
+- deprecated memory objects old enough to delete;
+- stale accepted memory objects that need human review before compaction.
+
+`compact --apply` only deletes raw events and deprecated memory that exceed the configured retention cutoffs. Accepted stale memory is review-only and is never deleted automatically.
+
 For JSON-heavy commands, use `--file payload.json` or `--file -` for stdin instead of `--json`.
 
 Search responses include:
@@ -368,7 +397,7 @@ This foundation is aligned with `engram-go-service-blueprint-v1.md` and now incl
 - migration runner (embedded SQL)
 - curation and governance endpoints (`curate`, `get`, `correct`, `deprecate`, `history`)
 - filtered retrieval over curated `memory_objects` with confidence/status controls and citation paths
-- CLI status/migrate/quality commands (event + memory counts, freshness, correction/deprecation rates)
+- CLI status/migrate/quality/retention commands (event + memory counts, freshness, correction/deprecation rates, retention/compaction candidates)
 - API-backed CLI commands for health, ingest, curate, search, get, correct, deprecate, and history
 - operator reindex command to rebuild Qdrant vectors from SQLite memory objects
 - backup/restore commands for SQLite operational recovery

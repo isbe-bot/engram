@@ -50,6 +50,10 @@ func TestLoadDefaultsAndEnvOverrides(t *testing.T) {
 	t.Setenv("ENGRAM_ADMIN_API_KEY", "admin-token")
 	t.Setenv("ENGRAM_MAX_BODY_BYTES", "2048")
 	t.Setenv("ENGRAM_RATE_LIMIT_PER_MINUTE", "123")
+	t.Setenv("ENGRAM_RETENTION_EVENT_DAYS", "45")
+	t.Setenv("ENGRAM_RETENTION_DEPRECATED_MEMORY_DAYS", "120")
+	t.Setenv("ENGRAM_RETENTION_STALE_MEMORY_DAYS", "14")
+	t.Setenv("ENGRAM_RETENTION_MAX_CANDIDATES", "77")
 	t.Setenv("ENGRAM_QDRANT_COLLECTION", "test_collection")
 
 	cfg, err := Load(cfgPath)
@@ -79,6 +83,21 @@ func TestLoadDefaultsAndEnvOverrides(t *testing.T) {
 	}
 	if cfg.Storage.QdrantCollection != "test_collection" {
 		t.Fatalf("expected qdrant collection override")
+	}
+	if cfg.Retention.EventRetentionDays != 45 || cfg.Retention.DeprecatedMemoryRetentionDays != 120 || cfg.Retention.StaleMemoryDays != 14 || cfg.Retention.MaxCandidates != 77 {
+		t.Fatalf("unexpected retention env overrides: %+v", cfg.Retention)
+	}
+}
+
+func TestLoadRejectsInvalidRetentionConfig(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "bad-retention.yaml")
+	content := "storage:\n  sqlite_path: './local.sqlite'\nretention:\n  event_retention_days: 0\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write cfg: %v", err)
+	}
+	if _, err := Load(cfgPath); err == nil {
+		t.Fatal("expected invalid retention validation error")
 	}
 }
 
