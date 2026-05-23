@@ -2,6 +2,60 @@
 
 Open-source memory intelligence core for AI agents.
 
+ENGRAM is the local memory service layer for long-running AI assistants. It turns scattered chat history, operational events, curated notes, corrections, and project context into governed, searchable, cited memory that an assistant can trust across sessions.
+
+Where a simple script-based memory system is usually a pile of cron jobs, markdown files, Redis buffers, and vector-search helpers, ENGRAM makes memory an operable service: a daemon, a CLI, a versioned schema, an audit trail, retrieval APIs, quality reports, backups, and release gates.
+
+## What ENGRAM is
+
+ENGRAM is a local-first memory intelligence platform composed of:
+
+- **`engramd`** — a daemon that exposes HTTP APIs for ingesting events, curating memory, retrieving cited context, tracking quality, and managing background work.
+- **`engramctl`** — an operator CLI for health checks, migrations, search, curation, correction, history, reindexing, backup, restore, and quality reporting.
+- **SQLite** — the durable operational ledger for events, memory objects, audit history, worker jobs, checkpoints, and quality samples.
+- **Qdrant** — the semantic retrieval layer for vector search and hybrid recall.
+- **Policy and governance rules** — validation for memory types, scopes, classifications, source references, secret-like content, protected high-confidence memories, and correction/deprecation reasons.
+
+The goal is not just to store memories. The goal is to make memory **reliable enough to build agentic software on top of it**.
+
+## What ENGRAM does
+
+ENGRAM gives an assistant a governed memory lifecycle:
+
+1. **Ingest** operational events, chat-derived context, workflow events, task outcomes, and external observations.
+2. **Curate** accepted memory objects with type, scope, classification, confidence, provenance, and source references.
+3. **Retrieve** relevant memories with confidence filters, pagination, deterministic citations, and semantic ranking.
+4. **Correct or deprecate** memories through explicit governed mutation paths instead of silent overwrites.
+5. **Audit** memory evolution through hash-chained memory-object events.
+6. **Index and reindex** memory into Qdrant for semantic recall.
+7. **Measure quality** with SLO-oriented reports such as ingest lag, retrieval latency, consolidation freshness, correction latency, and stale-memory rate.
+8. **Operate safely** through health checks, backups, restore, systemd deployment, release artifacts, and a runbook.
+
+## Why this improves OpenClaw
+
+OpenClaw is excellent at orchestrating live conversations, tools, sessions, agents, and plugins. ENGRAM improves the long-term memory side of that system by moving memory from script convention into a real service boundary.
+
+With ENGRAM, OpenClaw gets:
+
+- **Durable continuity** — important context survives restarts, compactions, session churn, and agent handoffs.
+- **Cited recall** — memory results carry source references so the assistant can show where a claim came from instead of relying on vague recollection.
+- **Governed writes** — memory updates are validated, classified, sourced, and audited before they become durable knowledge.
+- **Safer memory behavior** — secret-like content is rejected, protected high-confidence memories require explicit force for destructive mutation, and correction reasons must be meaningful.
+- **Semantic search as infrastructure** — Qdrant indexing and reindexing are part of the operator surface rather than one-off scripts.
+- **Observable quality** — operators can check whether memory ingestion, retrieval, consolidation, and stale-memory rates are healthy.
+- **Operational recovery** — SQLite backup/restore and runbook workflows make memory recoverable instead of fragile.
+- **Legacy cutover support** — existing script-based memory workflows can route through ENGRAM while keeping fallback paths during migration.
+
+In practice, this means OpenClaw agents can remember project decisions, user preferences, lessons learned, failures, corrections, and task history with better provenance and less drift.
+
+## Benefits
+
+- **For users:** the assistant becomes more consistent, less forgetful, and better at explaining why it believes something.
+- **For operators:** memory has health checks, backups, restore paths, quality reports, release artifacts, and service management.
+- **For developers:** memory has contracts, migrations, tests, APIs, and deterministic behavior instead of ad hoc scripts.
+- **For agent teams:** shared project context, specialist-agent lessons, and cross-agent patterns can be recalled with citations.
+- **For production VPS deployments:** ENGRAM can run locally beside OpenClaw with SQLite + Qdrant, avoiding dependence on a remote SaaS memory backend.
+
 ## Binaries
 - `engramd`: local daemon/service (ingest, curation, retrieval, governance, quality)
 - `engramctl`: operator CLI (status, migrate, quality, report, reindex, backup, restore, health, ingest, curate, search, get, correct, deprecate, history)
