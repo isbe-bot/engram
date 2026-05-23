@@ -68,7 +68,7 @@ func Defaults() Config {
 	cfg.Server.Port = DefaultPort
 	cfg.Server.MaxBodyBytes = DefaultMaxBodyBytes
 	cfg.Server.RateLimitPerMinute = DefaultRateLimitPerMinute
-	cfg.Storage.SQLitePath = "./engram.sqlite"
+	cfg.Storage.SQLitePath = "./data/engram.sqlite"
 	cfg.Ingestion.MaxBatchSize = 200
 	cfg.Ingestion.WorkerCount = 1
 	cfg.Quality.EvalInterval = "24h"

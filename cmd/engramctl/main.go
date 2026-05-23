@@ -37,6 +37,24 @@ func main() {
 	case "status", "migrate", "quality", "report", "reindex":
 		_ = fs.Parse(os.Args[2:])
 		runLocalCommand(cmd, *configPath)
+	case "init":
+		dataDir := fs.String("data-dir", "./data", "directory for ENGRAM runtime data")
+		qdrantURL := fs.String("qdrant-url", "http://127.0.0.1:6333", "Qdrant URL; use empty string to disable semantic indexing")
+		qdrantCollection := fs.String("qdrant-collection", "engram_memory", "Qdrant collection name")
+		bind := fs.String("bind", "127.0.0.1", "server bind address")
+		port := fs.Int("port", 8787, "server port")
+		apiKey := fs.String("api-key", "", "optional API bearer token")
+		force := fs.Bool("force", false, "overwrite existing config file")
+		_ = fs.Parse(os.Args[2:])
+		runInit(*configPath, initOptions{
+			DataDir:          *dataDir,
+			QdrantURL:        *qdrantURL,
+			QdrantCollection: *qdrantCollection,
+			Bind:             *bind,
+			Port:             *port,
+			APIKey:           *apiKey,
+			Force:            *force,
+		})
 	case "backup":
 		out := fs.String("out", "", "backup output path")
 		_ = fs.Parse(os.Args[2:])
@@ -125,7 +143,77 @@ func main() {
 }
 
 func usage() {
-	fmt.Println("usage: engramctl <status|migrate|quality|report|reindex|backup|restore|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
+	fmt.Println("usage: engramctl <init|status|migrate|quality|report|reindex|backup|restore|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
+}
+
+type initOptions struct {
+	DataDir          string
+	QdrantURL        string
+	QdrantCollection string
+	Bind             string
+	Port             int
+	APIKey           string
+	Force            bool
+}
+
+func runInit(configPath string, opts initOptions) {
+	configPath = strings.TrimSpace(configPath)
+	if configPath == "" {
+		log.Fatal("--config is required")
+	}
+	dataDir := strings.TrimSpace(opts.DataDir)
+	if dataDir == "" {
+		log.Fatal("--data-dir is required")
+	}
+	if _, err := os.Stat(configPath); err == nil && !opts.Force {
+		log.Fatalf("config already exists: %s (use --force to overwrite)", configPath)
+	} else if err != nil && !os.IsNotExist(err) {
+		log.Fatalf("stat config: %v", err)
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		log.Fatalf("create data dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "backups"), 0o755); err != nil {
+		log.Fatalf("create backups dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		log.Fatalf("create config dir: %v", err)
+	}
+
+	sqlitePath := filepath.Join(dataDir, "engram.sqlite")
+	qdrantCollection := strings.TrimSpace(opts.QdrantCollection)
+	if strings.TrimSpace(opts.QdrantURL) == "" {
+		qdrantCollection = ""
+	}
+	content := fmt.Sprintf(`server:
+  bind: %q
+  port: %d
+  api_key: %q
+  max_body_bytes: 1048576
+  rate_limit_per_minute: 0
+
+storage:
+  sqlite_path: %q
+  qdrant_url: %q
+  qdrant_collection: %q
+
+ingestion:
+  max_batch_size: 200
+  worker_count: 1
+
+quality:
+  eval_interval: "24h"
+`, strings.TrimSpace(opts.Bind), opts.Port, strings.TrimSpace(opts.APIKey), sqlitePath, strings.TrimSpace(opts.QdrantURL), qdrantCollection)
+
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		log.Fatalf("write config: %v", err)
+	}
+	writePrettyJSON(map[string]any{
+		"status":      "ok",
+		"config":      configPath,
+		"data_dir":    dataDir,
+		"sqlite_path": sqlitePath,
+	})
 }
 
 func runLocalCommand(cmd, configPath string) {

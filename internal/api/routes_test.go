@@ -211,7 +211,10 @@ func TestMemoryAPIAuthAndBodyLimit(t *testing.T) {
 	client := ts.Client()
 
 	doJSON(t, client, http.MethodGet, ts.URL+"/v1/health", nil, http.StatusOK)
-	doJSON(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, http.StatusUnauthorized)
+	unauth := doJSON(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, http.StatusUnauthorized)
+	if unauth["message"] != "missing or invalid bearer token" {
+		t.Fatalf("unexpected auth response: %+v", unauth)
+	}
 	doRawWithHeaders(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, map[string]string{"Authorization": "Bearer secret-test-token"}, http.StatusOK)
 	doRawWithHeaders(t, client, http.MethodPost, ts.URL+"/v1/events/ingest", []byte(`{"event_id":"`+strings.Repeat("x", 64)+`"}`), map[string]string{"Authorization": "Bearer secret-test-token", "Content-Type": "application/json"}, http.StatusRequestEntityTooLarge)
 }

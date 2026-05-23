@@ -10,7 +10,7 @@ server:
   rate_limit_per_minute: 0
 
 storage:
-  sqlite_path: "/srv/aileun/clients/example/runtime/db/engram.sqlite"
+  sqlite_path: "./data/engram.sqlite"
   qdrant_url: "http://127.0.0.1:6333"
   qdrant_collection: "engram_memory"
 

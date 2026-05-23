@@ -14,6 +14,9 @@ coverage.out
 .env.*
 configs/local.yaml
 
+# Local runtime data
+data/
+
 # IDE/OS
 .DS_Store
 .vscode/

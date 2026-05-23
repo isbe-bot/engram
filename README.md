@@ -61,22 +61,35 @@ In practice, this means OpenClaw agents can remember project decisions, user pre
 - `engramctl`: operator CLI (status, migrate, quality, report, reindex, backup, restore, health, ingest, curate, search, get, correct, deprecate, history)
 
 ## Quick start
-```bash
-make build
-make test
-./bin/engramd --config ./configs/example.yaml
-./bin/engramctl migrate --config ./configs/example.yaml
-./bin/engramctl status --config ./configs/example.yaml
-./bin/engramctl health --config ./configs/example.yaml
-./bin/engramctl reindex --config ./configs/example.yaml
-./bin/engramctl report --config ./configs/example.yaml
-./bin/engramctl backup --config ./configs/example.yaml --out ./engram.sqlite.bak
-```
 
-For local Docker-based development with Qdrant:
+### Docker + Qdrant development path
+
+The fastest way to try ENGRAM with semantic retrieval is Docker Compose:
 
 ```bash
 docker compose up --build
+```
+
+This starts ENGRAM plus Qdrant and stores local runtime data under `./data/`.
+
+### Local binary path
+
+```bash
+make build
+./bin/engramctl init --config ./engram.yaml --data-dir ./data
+./bin/engramd --config ./engram.yaml
+./bin/engramctl migrate --config ./engram.yaml
+./bin/engramctl status --config ./engram.yaml
+./bin/engramctl health --config ./engram.yaml
+./bin/engramctl reindex --config ./engram.yaml
+./bin/engramctl report --config ./engram.yaml
+./bin/engramctl backup --config ./engram.yaml --out ./data/backups/engram.sqlite.bak
+```
+
+For contributor verification:
+
+```bash
+make test
 ```
 
 ## Configuration
@@ -94,7 +107,7 @@ server:
   rate_limit_per_minute: 0    # optional per-client limit; 0 disables
 
 storage:
-  sqlite_path: "/var/lib/engram/engram.sqlite"
+  sqlite_path: "./data/engram.sqlite"
   qdrant_url: "http://127.0.0.1:6333"
   qdrant_collection: "engram_memory"
 
@@ -117,7 +130,7 @@ Supported environment overrides:
 - `ENGRAM_WORKER_COUNT`
 - `ENGRAM_QUALITY_EVAL_INTERVAL`
 
-## Security recommendations
+## Production security recommendations
 
 - Keep `server.bind` on `127.0.0.1` unless ENGRAM is intentionally being exposed.
 - Set `server.api_key` or `ENGRAM_API_KEY` before putting ENGRAM behind Docker port publishing, a reverse proxy, Tailscale, or any non-local interface.
@@ -127,6 +140,26 @@ Supported environment overrides:
 - Set `server.rate_limit_per_minute` when exposing ENGRAM beyond trusted local automation. `0` disables rate limiting for local sidecars.
 - Rotate API keys by changing `server.api_key` or `ENGRAM_API_KEY`, restarting `engramd`, then updating clients. Avoid logging or committing tokens.
 - Prefer backup/restore workflows over direct SQLite edits.
+
+## OpenClaw integration example
+
+ENGRAM can be used as OpenClaw's semantic memory sidecar by routing an OpenClaw memory search script through `engramctl`.
+
+A minimal adapter is provided at:
+
+```text
+examples/openclaw/mem-search-engram.js
+```
+
+Example:
+
+```bash
+ENGRAMCTL_BIN=/usr/local/bin/engramctl \
+ENGRAM_CONFIG=/etc/engram/engram.yaml \
+node examples/openclaw/mem-search-engram.js "project decision" --json --limit 5
+```
+
+The adapter preserves ENGRAM's API key handling, citations, confidence filters, and Qdrant-backed recall while keeping OpenClaw integration script-friendly.
 
 ## Current API (v1 bootstrap)
 
@@ -233,6 +266,8 @@ Governance behavior includes quality guardrails:
 - source refs must use approved prefixes (`adr:`, `chat:`, `spec:`, `meeting:`, `task:`, `event:`, `doc:`)
 - high-confidence memories (`confidence >= 0.90`) are immutable unless `force=true` is explicitly provided
 - memory object events include hash-chain audit fields (`prev_hash`, `event_hash`) for tamper-evidence
+
+See `docs/API.md` for a clean API reference and `docs/openapi.yaml` for a compact OpenAPI spec.
 
 ## Project layout
 ```text

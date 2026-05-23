@@ -1,0 +1,110 @@
+openapi: 3.0.3
+info:
+  title: ENGRAM API
+  version: v1
+  description: Governed local memory intelligence API for AI agents.
+servers:
+  - url: http://127.0.0.1:8787
+security:
+  - bearerAuth: []
+paths:
+  /v1/health:
+    get:
+      security: []
+      summary: Health check
+      responses:
+        '200': { description: OK }
+  /v1/events/ingest:
+    post:
+      summary: Ingest an operational event
+      responses:
+        '202': { description: Accepted }
+        '400': { description: Invalid request }
+        '401': { description: Unauthorized }
+        '413': { description: Body too large }
+  /v1/memory/curate:
+    post:
+      summary: Curate a memory object
+      responses:
+        '202': { description: Accepted }
+        '400': { description: Invalid request }
+        '401': { description: Unauthorized }
+        '409': { description: Duplicate object }
+        '413': { description: Body too large }
+  /v1/memory/search:
+    get:
+      summary: Search memory
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: min_confidence, in: query, schema: { type: number, format: double } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: include_events, in: query, schema: { type: boolean } }
+      responses:
+        '200': { description: Search results }
+        '401': { description: Unauthorized }
+        '429': { description: Rate limited }
+  /v1/memory/{object_id}:
+    get:
+      summary: Get a memory object
+      parameters:
+        - { name: object_id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Memory object }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+  /v1/memory/{object_id}/correct:
+    post:
+      summary: Correct a memory object
+      parameters:
+        - { name: object_id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Corrected memory object }
+        '400': { description: Invalid request }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+  /v1/memory/{object_id}/deprecate:
+    post:
+      summary: Deprecate a memory object
+      parameters:
+        - { name: object_id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Deprecated memory object }
+        '400': { description: Invalid request }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+  /v1/memory/{object_id}/history:
+    get:
+      summary: Memory audit history
+      parameters:
+        - { name: object_id, in: path, required: true, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: before, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: Audit events }
+        '401': { description: Unauthorized }
+  /v1/quality/metrics:
+    get:
+      summary: JSON quality metrics
+      responses:
+        '200': { description: Metrics }
+        '401': { description: Unauthorized }
+  /v1/quality/report:
+    get:
+      summary: Quality SLO report
+      responses:
+        '200': { description: Report }
+        '401': { description: Unauthorized }
+  /metrics:
+    get:
+      summary: Prometheus-style metrics
+      responses:
+        '200': { description: Metrics text }
+        '401': { description: Unauthorized }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

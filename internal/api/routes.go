@@ -68,7 +68,10 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if !authorized(r, deps.APIKey) {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="engram"`)
-				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+				writeJSON(w, http.StatusUnauthorized, map[string]any{
+					"error":   "unauthorized",
+					"message": "missing or invalid bearer token",
+				})
 				return
 			}
 			if !limiter.Allow(clientID(r)) {
