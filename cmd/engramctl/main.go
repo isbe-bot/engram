@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,6 +37,14 @@ func main() {
 	case "status", "migrate", "quality", "reindex":
 		_ = fs.Parse(os.Args[2:])
 		runLocalCommand(cmd, *configPath)
+	case "backup":
+		out := fs.String("out", "", "backup output path")
+		_ = fs.Parse(os.Args[2:])
+		runBackup(*configPath, *out)
+	case "restore":
+		from := fs.String("from", "", "backup SQLite file to restore")
+		_ = fs.Parse(os.Args[2:])
+		runRestore(*configPath, *from)
 	case "health":
 		_ = fs.Parse(os.Args[2:])
 		runAPICommand(*configPath, http.MethodGet, "/v1/health", nil)
@@ -116,7 +125,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Println("usage: engramctl <status|migrate|quality|reindex|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
+	fmt.Println("usage: engramctl <status|migrate|quality|reindex|backup|restore|health|ingest|curate|search|get|correct|deprecate|history> [--config path]")
 }
 
 func runLocalCommand(cmd, configPath string) {
@@ -163,6 +172,67 @@ func runLocalCommand(cmd, configPath string) {
 	case "reindex":
 		runReindex(cfg, store)
 	}
+}
+
+func runBackup(configPath, outPath string) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+	outPath = strings.TrimSpace(outPath)
+	if outPath == "" {
+		stamp := time.Now().UTC().Format("20060102T150405Z")
+		outPath = filepath.Join(filepath.Dir(cfg.Storage.SQLitePath), "engram-"+stamp+".sqlite.bak")
+	}
+	if err := copyFile(cfg.Storage.SQLitePath, outPath); err != nil {
+		log.Fatalf("backup sqlite: %v", err)
+	}
+	writePrettyJSON(map[string]any{"status": "ok", "source": cfg.Storage.SQLitePath, "backup": outPath})
+}
+
+func runRestore(configPath, fromPath string) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+	fromPath = strings.TrimSpace(fromPath)
+	if fromPath == "" {
+		log.Fatal("--from is required")
+	}
+	if _, err := os.Stat(fromPath); err != nil {
+		log.Fatalf("restore source: %v", err)
+	}
+	if _, err := os.Stat(cfg.Storage.SQLitePath); err == nil {
+		stamp := time.Now().UTC().Format("20060102T150405Z")
+		preRestore := cfg.Storage.SQLitePath + ".pre-restore-" + stamp
+		if err := copyFile(cfg.Storage.SQLitePath, preRestore); err != nil {
+			log.Fatalf("create pre-restore backup: %v", err)
+		}
+	}
+	if err := copyFile(fromPath, cfg.Storage.SQLitePath); err != nil {
+		log.Fatalf("restore sqlite: %v", err)
+	}
+	writePrettyJSON(map[string]any{"status": "ok", "restored_from": fromPath, "target": cfg.Storage.SQLitePath})
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = out.Close() }()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
 }
 
 func runReindex(cfg config.Config, store *sqlitestore.Store) {

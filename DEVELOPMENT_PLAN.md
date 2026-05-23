@@ -333,3 +333,20 @@ Verification:
 
 - `engramctl reindex` smoke passed against `/tmp/engram-hybrid-smoke.yaml` and local Qdrant collection `engram_hybrid_smoke`.
 - Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.
+
+### 2026-05-23 — Packaging and recovery slice
+
+Completed:
+
+- Added `engramctl backup` and `engramctl restore` for SQLite operational recovery.
+- Added hardened systemd unit template at `deploy/systemd/engramd.service`.
+- Added install script at `scripts/install.sh`.
+- Added release artifact script at `scripts/release.sh`.
+- Added operator runbook at `docs/RUNBOOK.md`.
+- Updated README with backup/reindex/packaging commands.
+
+Verification:
+
+- Backup smoke passed against `/tmp/engram-hybrid-smoke.yaml`.
+- Install script dry-run passed with `DRY_RUN=1`.
+- Release script smoke passed with `scripts/release.sh v1-smoke`, including full release gates and artifact generation under `dist/v1-smoke`.
