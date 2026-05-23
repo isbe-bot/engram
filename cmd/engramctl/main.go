@@ -43,7 +43,10 @@ func main() {
 		qdrantCollection := fs.String("qdrant-collection", "engram_memory", "Qdrant collection name")
 		bind := fs.String("bind", "127.0.0.1", "server bind address")
 		port := fs.Int("port", 8787, "server port")
-		apiKey := fs.String("api-key", "", "optional API bearer token")
+		apiKey := fs.String("api-key", "", "optional legacy admin API bearer token")
+		readAPIKey := fs.String("read-api-key", "", "optional read-scoped API bearer token")
+		writeAPIKey := fs.String("write-api-key", "", "optional write-scoped API bearer token")
+		adminAPIKey := fs.String("admin-api-key", "", "optional admin-scoped API bearer token")
 		force := fs.Bool("force", false, "overwrite existing config file")
 		_ = fs.Parse(os.Args[2:])
 		runInit(*configPath, initOptions{
@@ -53,6 +56,9 @@ func main() {
 			Bind:             *bind,
 			Port:             *port,
 			APIKey:           *apiKey,
+			ReadAPIKey:       *readAPIKey,
+			WriteAPIKey:      *writeAPIKey,
+			AdminAPIKey:      *adminAPIKey,
 			Force:            *force,
 		})
 	case "backup":
@@ -153,6 +159,9 @@ type initOptions struct {
 	Bind             string
 	Port             int
 	APIKey           string
+	ReadAPIKey       string
+	WriteAPIKey      string
+	AdminAPIKey      string
 	Force            bool
 }
 
@@ -185,10 +194,11 @@ func runInit(configPath string, opts initOptions) {
 	if strings.TrimSpace(opts.QdrantURL) == "" {
 		qdrantCollection = ""
 	}
+	apiKeysYAML := scopedKeysYAML(opts)
 	content := fmt.Sprintf(`server:
   bind: %q
   port: %d
-  api_key: %q
+  api_key: %q%s
   max_body_bytes: 1048576
   rate_limit_per_minute: 0
 
@@ -203,7 +213,7 @@ ingestion:
 
 quality:
   eval_interval: "24h"
-`, strings.TrimSpace(opts.Bind), opts.Port, strings.TrimSpace(opts.APIKey), sqlitePath, strings.TrimSpace(opts.QdrantURL), qdrantCollection)
+`, strings.TrimSpace(opts.Bind), opts.Port, strings.TrimSpace(opts.APIKey), apiKeysYAML, sqlitePath, strings.TrimSpace(opts.QdrantURL), qdrantCollection)
 
 	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
 		log.Fatalf("write config: %v", err)
@@ -214,6 +224,29 @@ quality:
 		"data_dir":    dataDir,
 		"sqlite_path": sqlitePath,
 	})
+}
+
+func scopedKeysYAML(opts initOptions) string {
+	entries := []struct {
+		name   string
+		token  string
+		scopes string
+	}{
+		{name: "read", token: strings.TrimSpace(opts.ReadAPIKey), scopes: "[read]"},
+		{name: "write", token: strings.TrimSpace(opts.WriteAPIKey), scopes: "[read, write]"},
+		{name: "admin", token: strings.TrimSpace(opts.AdminAPIKey), scopes: "[admin]"},
+	}
+	var b strings.Builder
+	for _, entry := range entries {
+		if entry.token == "" {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteString("\n  api_keys:")
+		}
+		b.WriteString(fmt.Sprintf("\n    - name: %q\n      token: %q\n      scopes: %s", entry.name, entry.token, entry.scopes))
+	}
+	return b.String()
 }
 
 func runLocalCommand(cmd, configPath string) {
@@ -374,8 +407,8 @@ func runAPICommand(configPath, method, path string, body []byte) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if strings.TrimSpace(cfg.Server.APIKey) != "" {
-		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(cfg.Server.APIKey))
+	if token := tokenForRequest(cfg, method, path); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -399,6 +432,36 @@ func runAPICommand(configPath, method, path string, body []byte) {
 		return
 	}
 	writePrettyJSON(payload)
+}
+
+func tokenForRequest(cfg config.Config, method, path string) string {
+	if strings.TrimSpace(cfg.Server.APIKey) != "" {
+		return strings.TrimSpace(cfg.Server.APIKey)
+	}
+	required := "read"
+	if method != http.MethodGet {
+		required = "write"
+	}
+	for _, key := range cfg.Server.APIKeys {
+		if cliScopeAllowed(key.Scopes, required) {
+			return strings.TrimSpace(key.Token)
+		}
+	}
+	_ = path
+	return ""
+}
+
+func cliScopeAllowed(scopes []string, required string) bool {
+	required = strings.ToLower(strings.TrimSpace(required))
+	for _, scope := range scopes {
+		switch strings.ToLower(strings.TrimSpace(scope)) {
+		case "admin":
+			return true
+		case required:
+			return true
+		}
+	}
+	return false
 }
 
 type bodyFlags struct {

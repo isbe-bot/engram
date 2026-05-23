@@ -1,9 +1,20 @@
 server:
   bind: "127.0.0.1"
   port: 8787
-  # Optional but strongly recommended if ENGRAM is reachable by anything
-  # other than trusted local processes. Clients send: Authorization: Bearer <api_key>
+  # Legacy single admin token. Prefer scoped api_keys below for production.
+  # Clients send: Authorization: Bearer <token>
   api_key: ""
+  # Optional scoped tokens. Uncomment and set unique tokens when networked.
+  # api_keys:
+  #   - name: read-client
+  #     token: ""
+  #     scopes: [read]
+  #   - name: writer
+  #     token: ""
+  #     scopes: [read, write]
+  #   - name: operator
+  #     token: ""
+  #     scopes: [admin]
   # Maximum JSON request body size for write endpoints (1 MiB default).
   max_body_bytes: 1048576
   # Optional per-client request limit across authenticated endpoints; 0 disables.

@@ -18,6 +18,7 @@ type Dependencies struct {
 	Quality            qualityReporter
 	Health             pinger
 	APIKey             string
+	APIKeys            []config.APIKeyConfig
 	MaxBodyBytes       int64
 	RateLimitPerMinute int
 	Logger             *slog.Logger
@@ -29,6 +30,7 @@ type Server struct {
 
 func NewServer(cfg config.Config, deps Dependencies) *Server {
 	deps.APIKey = cfg.Server.APIKey
+	deps.APIKeys = cfg.Server.APIKeys
 	deps.MaxBodyBytes = cfg.Server.MaxBodyBytes
 	deps.RateLimitPerMinute = cfg.Server.RateLimitPerMinute
 	if deps.Logger == nil {

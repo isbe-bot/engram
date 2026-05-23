@@ -76,7 +76,7 @@ This starts ENGRAM plus Qdrant and stores local runtime data under `./data/`.
 
 ```bash
 make build
-./bin/engramctl init --config ./engram.yaml --data-dir ./data
+./bin/engramctl init --config ./engram.yaml --data-dir ./data --read-api-key dev-read --write-api-key dev-write
 ./bin/engramd --config ./engram.yaml
 ./bin/engramctl migrate --config ./engram.yaml
 ./bin/engramctl status --config ./engram.yaml
@@ -102,7 +102,17 @@ Key YAML fields:
 server:
   bind: "127.0.0.1"
   port: 8787
-  api_key: ""                 # optional Bearer token; strongly recommended when networked
+  api_key: ""                 # legacy admin Bearer token; prefer scoped api_keys when networked
+  api_keys:
+    - name: read-client
+      token: ""
+      scopes: [read]
+    - name: writer
+      token: ""
+      scopes: [read, write]
+    - name: operator
+      token: ""
+      scopes: [admin]
   max_body_bytes: 1048576     # write-endpoint JSON body limit
   rate_limit_per_minute: 0    # optional per-client limit; 0 disables
 
@@ -120,7 +130,10 @@ Supported environment overrides:
 
 - `ENGRAM_SERVER_BIND`
 - `ENGRAM_SERVER_PORT`
-- `ENGRAM_API_KEY`
+- `ENGRAM_API_KEY` legacy admin token
+- `ENGRAM_READ_API_KEY` appends a read-scoped token
+- `ENGRAM_WRITE_API_KEY` appends a read/write-scoped token
+- `ENGRAM_ADMIN_API_KEY` appends an admin-scoped token
 - `ENGRAM_MAX_BODY_BYTES`
 - `ENGRAM_RATE_LIMIT_PER_MINUTE`
 - `ENGRAM_SQLITE_PATH`
@@ -133,9 +146,10 @@ Supported environment overrides:
 ## Production security recommendations
 
 - Keep `server.bind` on `127.0.0.1` unless ENGRAM is intentionally being exposed.
-- Set `server.api_key` or `ENGRAM_API_KEY` before putting ENGRAM behind Docker port publishing, a reverse proxy, Tailscale, or any non-local interface.
-- Authenticated clients must send `Authorization: Bearer <api_key>`.
-- `/v1/health` remains unauthenticated for local liveness checks. All other API endpoints, including `/metrics`, require the token when configured.
+- Set scoped `server.api_keys` or `ENGRAM_READ_API_KEY` / `ENGRAM_WRITE_API_KEY` / `ENGRAM_ADMIN_API_KEY` before putting ENGRAM behind Docker port publishing, a reverse proxy, Tailscale, or any non-local interface. The legacy `server.api_key` / `ENGRAM_API_KEY` still works as an admin-compatible token for simple local deployments.
+- Authenticated clients must send `Authorization: Bearer <token>`.
+- `/v1/health` remains unauthenticated for local liveness checks. All other API endpoints, including `/metrics`, require a valid token when configured.
+- Prefer least privilege: give dashboards/search adapters `read`, ingestion/curation jobs `read, write`, and operators `admin`.
 - Keep `server.max_body_bytes` low enough for expected memory payloads. The default is 1 MiB.
 - Set `server.rate_limit_per_minute` when exposing ENGRAM beyond trusted local automation. `0` disables rate limiting for local sidecars.
 - Rotate API keys by changing `server.api_key` or `ENGRAM_API_KEY`, restarting `engramd`, then updating clients. Avoid logging or committing tokens.

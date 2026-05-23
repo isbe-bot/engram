@@ -45,6 +45,9 @@ func TestLoadDefaultsAndEnvOverrides(t *testing.T) {
 	}
 	t.Setenv("ENGRAM_SERVER_PORT", "9876")
 	t.Setenv("ENGRAM_API_KEY", "test-token")
+	t.Setenv("ENGRAM_READ_API_KEY", "read-token")
+	t.Setenv("ENGRAM_WRITE_API_KEY", "write-token")
+	t.Setenv("ENGRAM_ADMIN_API_KEY", "admin-token")
 	t.Setenv("ENGRAM_MAX_BODY_BYTES", "2048")
 	t.Setenv("ENGRAM_RATE_LIMIT_PER_MINUTE", "123")
 	t.Setenv("ENGRAM_QDRANT_COLLECTION", "test_collection")
@@ -62,6 +65,12 @@ func TestLoadDefaultsAndEnvOverrides(t *testing.T) {
 	if cfg.Server.APIKey != "test-token" {
 		t.Fatalf("expected env API key override")
 	}
+	if len(cfg.Server.APIKeys) != 3 {
+		t.Fatalf("expected 3 scoped env tokens, got %d", len(cfg.Server.APIKeys))
+	}
+	if cfg.Server.APIKeys[1].Token != "write-token" || len(cfg.Server.APIKeys[1].Scopes) != 2 {
+		t.Fatalf("unexpected write token config: %+v", cfg.Server.APIKeys[1])
+	}
 	if cfg.Server.MaxBodyBytes != 2048 {
 		t.Fatalf("expected max body override, got %d", cfg.Server.MaxBodyBytes)
 	}
@@ -70,5 +79,17 @@ func TestLoadDefaultsAndEnvOverrides(t *testing.T) {
 	}
 	if cfg.Storage.QdrantCollection != "test_collection" {
 		t.Fatalf("expected qdrant collection override")
+	}
+}
+
+func TestLoadRejectsInvalidScopedToken(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "bad-scopes.yaml")
+	content := "storage:\n  sqlite_path: './local.sqlite'\nserver:\n  api_keys:\n    - name: bad\n      token: token\n      scopes: [root]\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write cfg: %v", err)
+	}
+	if _, err := Load(cfgPath); err == nil {
+		t.Fatal("expected invalid scope validation error")
 	}
 }

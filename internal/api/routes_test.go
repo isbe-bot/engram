@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/isbe-bot/engram/internal/config"
 	"github.com/isbe-bot/engram/internal/curate"
 	"github.com/isbe-bot/engram/internal/govern"
 	"github.com/isbe-bot/engram/internal/ingest"
@@ -192,13 +193,16 @@ func TestMemoryAPIAuthAndBodyLimit(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	registerRoutes(mux, Dependencies{
-		Ingest:       ingest.NewService(store),
-		Curate:       curate.NewService(store),
-		Govern:       govern.NewService(store),
-		Search:       retrieve.NewService(store, store),
-		Quality:      quality.NewService(store),
-		Health:       store,
-		APIKey:       "secret-test-token",
+		Ingest:  ingest.NewService(store),
+		Curate:  curate.NewService(store),
+		Govern:  govern.NewService(store),
+		Search:  retrieve.NewService(store, store),
+		Quality: quality.NewService(store),
+		Health:  store,
+		APIKeys: []config.APIKeyConfig{
+			{Name: "read", Token: "read-token", Scopes: []string{"read"}},
+			{Name: "write", Token: "write-token", Scopes: []string{"read", "write"}},
+		},
 		MaxBodyBytes: 32,
 	})
 	ts := httptest.NewServer(mux)
@@ -212,11 +216,12 @@ func TestMemoryAPIAuthAndBodyLimit(t *testing.T) {
 
 	doJSON(t, client, http.MethodGet, ts.URL+"/v1/health", nil, http.StatusOK)
 	unauth := doJSON(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, http.StatusUnauthorized)
-	if unauth["message"] != "missing or invalid bearer token" {
+	if unauth["message"] != "missing or invalid bearer token for required scope: read" {
 		t.Fatalf("unexpected auth response: %+v", unauth)
 	}
-	doRawWithHeaders(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, map[string]string{"Authorization": "Bearer secret-test-token"}, http.StatusOK)
-	doRawWithHeaders(t, client, http.MethodPost, ts.URL+"/v1/events/ingest", []byte(`{"event_id":"`+strings.Repeat("x", 64)+`"}`), map[string]string{"Authorization": "Bearer secret-test-token", "Content-Type": "application/json"}, http.StatusRequestEntityTooLarge)
+	doRawWithHeaders(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, map[string]string{"Authorization": "Bearer read-token"}, http.StatusOK)
+	doRawWithHeaders(t, client, http.MethodPost, ts.URL+"/v1/events/ingest", []byte(`{"event_id":"evt-read-only"}`), map[string]string{"Authorization": "Bearer read-token", "Content-Type": "application/json"}, http.StatusUnauthorized)
+	doRawWithHeaders(t, client, http.MethodPost, ts.URL+"/v1/events/ingest", []byte(`{"event_id":"`+strings.Repeat("x", 64)+`"}`), map[string]string{"Authorization": "Bearer write-token", "Content-Type": "application/json"}, http.StatusRequestEntityTooLarge)
 }
 
 func TestMemoryAPIIntegrationValidation(t *testing.T) {

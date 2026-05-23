@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/isbe-bot/engram/internal/config"
 	"github.com/isbe-bot/engram/internal/events"
 	"github.com/isbe-bot/engram/internal/models"
 	"github.com/isbe-bot/engram/internal/quality"
@@ -64,13 +65,14 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 	})
 
 	limiter := newRateLimiter(deps.RateLimitPerMinute, time.Minute)
-	requireAuth := func(next http.HandlerFunc) http.HandlerFunc {
+	requireAuthDynamic := func(scopeFn func(*http.Request) string, next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			if !authorized(r, deps.APIKey) {
+			scope := scopeFn(r)
+			if !authorized(r, deps.APIKey, deps.APIKeys, scope) {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="engram"`)
 				writeJSON(w, http.StatusUnauthorized, map[string]any{
 					"error":   "unauthorized",
-					"message": "missing or invalid bearer token",
+					"message": "missing or invalid bearer token for required scope: " + scope,
 				})
 				return
 			}
@@ -82,8 +84,11 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 			next(w, r)
 		}
 	}
+	requireAuth := func(scope string, next http.HandlerFunc) http.HandlerFunc {
+		return requireAuthDynamic(func(*http.Request) string { return scope }, next)
+	}
 
-	mux.HandleFunc("/metrics", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/metrics", requireAuth("read", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -100,7 +105,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		writePrometheusMetrics(w, metrics)
 	}))
 
-	mux.HandleFunc("/v1/events/ingest", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/events/ingest", requireAuth("write", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -128,7 +133,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "event_id": env.EventID})
 	}))
 
-	mux.HandleFunc("/v1/memory/curate", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/memory/curate", requireAuth("write", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -156,7 +161,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "memory": obj})
 	}))
 
-	mux.HandleFunc("/v1/memory/search", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/memory/search", requireAuth("read", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -211,7 +216,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		})
 	}))
 
-	mux.HandleFunc("/v1/quality/report", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/quality/report", requireAuth("read", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -228,7 +233,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		writeJSON(w, http.StatusOK, map[string]any{"report": report})
 	}))
 
-	mux.HandleFunc("/v1/quality/metrics", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/quality/metrics", requireAuth("read", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -245,7 +250,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		writeJSON(w, http.StatusOK, map[string]any{"metrics": metrics})
 	}))
 
-	mux.HandleFunc("/v1/memory/", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/memory/", requireAuthDynamic(scopeForMemoryRoute, func(w http.ResponseWriter, r *http.Request) {
 		if deps.Govern == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "govern service unavailable"})
 			return
@@ -358,9 +363,23 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 	}))
 }
 
-func authorized(r *http.Request, apiKey string) bool {
-	apiKey = strings.TrimSpace(apiKey)
-	if apiKey == "" {
+func scopeForMemoryRoute(r *http.Request) string {
+	path := strings.TrimPrefix(r.URL.Path, "/v1/memory/")
+	parts := strings.Split(path, "/")
+	if r.Method == http.MethodGet {
+		return "read"
+	}
+	if len(parts) == 2 {
+		switch parts[1] {
+		case "correct", "deprecate":
+			return "write"
+		}
+	}
+	return "admin"
+}
+
+func authorized(r *http.Request, apiKey string, apiKeys []config.APIKeyConfig, requiredScope string) bool {
+	if strings.TrimSpace(apiKey) == "" && len(apiKeys) == 0 {
 		return true
 	}
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
@@ -368,7 +387,28 @@ func authorized(r *http.Request, apiKey string) bool {
 		return false
 	}
 	got := strings.TrimSpace(auth[len("Bearer "):])
-	return subtle.ConstantTimeCompare([]byte(got), []byte(apiKey)) == 1
+	if strings.TrimSpace(apiKey) != "" && subtle.ConstantTimeCompare([]byte(got), []byte(apiKey)) == 1 {
+		return true // legacy api_key is admin-compatible.
+	}
+	for _, key := range apiKeys {
+		if subtle.ConstantTimeCompare([]byte(got), []byte(strings.TrimSpace(key.Token))) == 1 && scopeAllowed(key.Scopes, requiredScope) {
+			return true
+		}
+	}
+	return false
+}
+
+func scopeAllowed(scopes []string, required string) bool {
+	required = strings.ToLower(strings.TrimSpace(required))
+	for _, scope := range scopes {
+		switch strings.ToLower(strings.TrimSpace(scope)) {
+		case "admin":
+			return true
+		case required:
+			return true
+		}
+	}
+	return false
 }
 
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any) error {

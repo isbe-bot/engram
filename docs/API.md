@@ -6,16 +6,24 @@ Base URL defaults to `http://127.0.0.1:8787`.
 
 `GET /v1/health` is intentionally unauthenticated for local liveness checks.
 
-All other endpoints require this header when `server.api_key` / `ENGRAM_API_KEY` is configured:
+All other endpoints require this header when `server.api_key`, `server.api_keys`, or token env vars are configured:
 
 ```http
-Authorization: Bearer <api_key>
+Authorization: Bearer <token>
 ```
+
+Token scopes:
+
+- `read`: `/metrics`, quality endpoints, search, get, and history.
+- `write`: ingest, curate, correct, and deprecate. Write clients commonly also receive `read`.
+- `admin`: all endpoints.
+
+The legacy `server.api_key` / `ENGRAM_API_KEY` behaves as an admin-compatible token for backward compatibility.
 
 Unauthorized responses are JSON:
 
 ```json
-{"error":"unauthorized","message":"missing or invalid bearer token"}
+{"error":"unauthorized","message":"missing or invalid bearer token for required scope: read"}
 ```
 
 ## Endpoints

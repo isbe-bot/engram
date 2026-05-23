@@ -24,11 +24,18 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Bind               string `yaml:"bind"`
-	Port               int    `yaml:"port"`
-	APIKey             string `yaml:"api_key"`
-	MaxBodyBytes       int64  `yaml:"max_body_bytes"`
-	RateLimitPerMinute int    `yaml:"rate_limit_per_minute"`
+	Bind               string         `yaml:"bind"`
+	Port               int            `yaml:"port"`
+	APIKey             string         `yaml:"api_key"`
+	APIKeys            []APIKeyConfig `yaml:"api_keys"`
+	MaxBodyBytes       int64          `yaml:"max_body_bytes"`
+	RateLimitPerMinute int            `yaml:"rate_limit_per_minute"`
+}
+
+type APIKeyConfig struct {
+	Name   string   `yaml:"name"`
+	Token  string   `yaml:"token"`
+	Scopes []string `yaml:"scopes"`
 }
 
 type StorageConfig struct {
@@ -79,6 +86,7 @@ func (c *Config) ApplyEnv() {
 	setString(&c.Server.Bind, "ENGRAM_SERVER_BIND")
 	setInt(&c.Server.Port, "ENGRAM_SERVER_PORT")
 	setString(&c.Server.APIKey, "ENGRAM_API_KEY")
+	c.applyScopedTokenEnv()
 	setInt64(&c.Server.MaxBodyBytes, "ENGRAM_MAX_BODY_BYTES")
 	setInt(&c.Server.RateLimitPerMinute, "ENGRAM_RATE_LIMIT_PER_MINUTE")
 	setString(&c.Storage.SQLitePath, "ENGRAM_SQLITE_PATH")
@@ -102,6 +110,21 @@ func (c Config) Validate() error {
 	if c.Server.RateLimitPerMinute < 0 {
 		return fmt.Errorf("server.rate_limit_per_minute must be >= 0")
 	}
+	for _, key := range c.Server.APIKeys {
+		if strings.TrimSpace(key.Token) == "" {
+			return fmt.Errorf("server.api_keys token is required")
+		}
+		if len(key.Scopes) == 0 {
+			return fmt.Errorf("server.api_keys scopes are required")
+		}
+		for _, scope := range key.Scopes {
+			switch strings.ToLower(strings.TrimSpace(scope)) {
+			case "read", "write", "admin":
+			default:
+				return fmt.Errorf("server.api_keys scope is not allowed: %s", scope)
+			}
+		}
+	}
 	if strings.TrimSpace(c.Storage.SQLitePath) == "" {
 		return fmt.Errorf("storage.sqlite_path is required")
 	}
@@ -115,6 +138,18 @@ func (c Config) Validate() error {
 		return fmt.Errorf("ingestion.worker_count must be > 0")
 	}
 	return nil
+}
+
+func (c *Config) applyScopedTokenEnv() {
+	appendScoped := func(name, token string, scopes []string) {
+		if strings.TrimSpace(token) == "" {
+			return
+		}
+		c.Server.APIKeys = append(c.Server.APIKeys, APIKeyConfig{Name: name, Token: token, Scopes: scopes})
+	}
+	appendScoped("read-env", os.Getenv("ENGRAM_READ_API_KEY"), []string{"read"})
+	appendScoped("write-env", os.Getenv("ENGRAM_WRITE_API_KEY"), []string{"read", "write"})
+	appendScoped("admin-env", os.Getenv("ENGRAM_ADMIN_API_KEY"), []string{"admin"})
 }
 
 func setString(target *string, key string) {
