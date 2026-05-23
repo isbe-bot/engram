@@ -60,6 +60,22 @@ func TestClientEnsureCollectionAndUpsert(t *testing.T) {
 	}
 }
 
+func TestClientEnsureCollectionTreatsAlreadyExistsAsOK(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		writeQdrantOK(t, w, map[string]any{"status": map[string]any{"error": "Wrong input: Collection `engram_test` already exists!"}})
+	}))
+	defer server.Close()
+
+	client, err := New(server.URL, "engram_test")
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if err := client.EnsureCollection(context.Background(), 16); err != nil {
+		t.Fatalf("expected already-exists conflict to be OK: %v", err)
+	}
+}
+
 func TestClientSearch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/collections/engram_test/points/search" {

@@ -16,6 +16,16 @@ func (f fakeMemorySearcher) SearchMemoryObjects(ctx context.Context, q Query) ([
 	return f.results, f.nextCursor, nil
 }
 
+type fakeSemanticSearcher struct {
+	results []map[string]any
+}
+
+func (f fakeSemanticSearcher) SearchSemantic(ctx context.Context, q Query) ([]map[string]any, error) {
+	_ = ctx
+	_ = q
+	return f.results, nil
+}
+
 type fakeEventSearcher struct {
 	results []map[string]any
 }
@@ -27,6 +37,24 @@ func (f fakeEventSearcher) SearchEvents(ctx context.Context, query string, limit
 		return f.results[:limit], nil
 	}
 	return f.results, nil
+}
+
+func TestSearchDeduplicatesSemanticAndSQLiteMemory(t *testing.T) {
+	svc := NewService(
+		fakeMemorySearcher{results: []map[string]any{{"object_id": "mem-1", "content": "sqlite duplicate"}, {"object_id": "mem-2", "content": "sqlite unique"}}},
+		nil,
+		fakeSemanticSearcher{results: []map[string]any{{"object_id": "mem-1", "content": "semantic hit", "retrieval_source": "qdrant", "rank_score": 0.9}}},
+	)
+	resp, err := svc.Search(context.Background(), Query{Text: "semantic", Limit: 5})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(resp.Results) != 2 {
+		t.Fatalf("expected semantic mem-1 plus sqlite mem-2, got %d: %+v", len(resp.Results), resp.Results)
+	}
+	if resp.Results[0]["retrieval_source"] != "qdrant" {
+		t.Fatalf("expected qdrant result first, got %+v", resp.Results[0])
+	}
 }
 
 func TestSearchIncludesEventsAndScores(t *testing.T) {

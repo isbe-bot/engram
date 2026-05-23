@@ -19,12 +19,21 @@ type memoryGovernor interface {
 	ListMemoryObjectEvents(ctx context.Context, objectID, action string, beforeID, limit int) ([]map[string]any, error)
 }
 
-type Service struct {
-	store memoryGovernor
+type memoryIndexer interface {
+	IndexMemory(ctx context.Context, obj models.MemoryObject) error
 }
 
-func NewService(store memoryGovernor) *Service {
-	return &Service{store: store}
+type Service struct {
+	store   memoryGovernor
+	indexer memoryIndexer
+}
+
+func NewService(store memoryGovernor, indexers ...memoryIndexer) *Service {
+	svc := &Service{store: store}
+	if len(indexers) > 0 {
+		svc.indexer = indexers[0]
+	}
+	return svc
 }
 
 func (s *Service) Get(ctx context.Context, objectID string) (models.MemoryObject, error) {
@@ -69,7 +78,16 @@ func (s *Service) Correct(ctx context.Context, objectID string, req contracts.Me
 		return models.MemoryObject{}, fmt.Errorf("high-confidence memory requires force=true")
 	}
 
-	return s.store.CorrectMemoryObject(ctx, objectID, req.Content, req.Reason, req.SourceRefs, req.Envelope)
+	corrected, err := s.store.CorrectMemoryObject(ctx, objectID, req.Content, req.Reason, req.SourceRefs, req.Envelope)
+	if err != nil {
+		return models.MemoryObject{}, err
+	}
+	if s.indexer != nil {
+		if err := s.indexer.IndexMemory(ctx, corrected); err != nil {
+			return models.MemoryObject{}, fmt.Errorf("index corrected memory object: %w", err)
+		}
+	}
+	return corrected, nil
 }
 
 func (s *Service) Deprecate(ctx context.Context, objectID string, req contracts.MemoryDeprecateRequest) (models.MemoryObject, error) {
@@ -95,7 +113,16 @@ func (s *Service) Deprecate(ctx context.Context, objectID string, req contracts.
 		return models.MemoryObject{}, fmt.Errorf("high-confidence memory requires force=true")
 	}
 
-	return s.store.DeprecateMemoryObject(ctx, objectID, req.Reason, req.Envelope)
+	deprecated, err := s.store.DeprecateMemoryObject(ctx, objectID, req.Reason, req.Envelope)
+	if err != nil {
+		return models.MemoryObject{}, err
+	}
+	if s.indexer != nil {
+		if err := s.indexer.IndexMemory(ctx, deprecated); err != nil {
+			return models.MemoryObject{}, fmt.Errorf("index deprecated memory object: %w", err)
+		}
+	}
+	return deprecated, nil
 }
 
 func (s *Service) History(ctx context.Context, objectID string, req contracts.MemoryHistoryRequest) ([]map[string]any, error) {

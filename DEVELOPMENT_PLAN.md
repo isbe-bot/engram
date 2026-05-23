@@ -303,3 +303,19 @@ Verification:
 
 - Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.
 - Live Qdrant smoke passed against `http://127.0.0.1:6333` using temporary `engram_smoke` collection.
+
+### 2026-05-23 — Milestone 4 slice B
+
+Completed:
+
+- Added index service that embeds memory objects, upserts them into Qdrant, and formats semantic search hits with citations.
+- Wired `engramd` to initialize Qdrant when configured and ensure the collection exists.
+- Wired curate/correct/deprecate paths to update the vector index.
+- Wired retrieval to run semantic search first and de-duplicate SQLite hits by `object_id`.
+- Treated Qdrant collection already-exists conflicts as successful ensure operations.
+- Added tests for index upsert/search and hybrid semantic de-duplication.
+
+Verification:
+
+- Local gates passed: formatting, `go mod tidy`, `git diff --check`, `go test ./...`, `go vet ./...`, `staticcheck ./...`, `govulncheck ./...`, `go test -race ./...`, `make build`.
+- Live hybrid smoke passed with `engramd` + `engramctl` + local Qdrant collection `engram_hybrid_smoke`; search returned `retrieval_source=qdrant` with citations.

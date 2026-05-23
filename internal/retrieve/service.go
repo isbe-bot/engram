@@ -32,13 +32,22 @@ type eventSearcher interface {
 	SearchEvents(ctx context.Context, query string, limit int) ([]SearchResult, error)
 }
 
-type Service struct {
-	memory memorySearcher
-	events eventSearcher
+type semanticSearcher interface {
+	SearchSemantic(ctx context.Context, q Query) ([]SearchResult, error)
 }
 
-func NewService(memory memorySearcher, events eventSearcher) *Service {
-	return &Service{memory: memory, events: events}
+type Service struct {
+	memory   memorySearcher
+	events   eventSearcher
+	semantic semanticSearcher
+}
+
+func NewService(memory memorySearcher, events eventSearcher, semantic ...semanticSearcher) *Service {
+	svc := &Service{memory: memory, events: events}
+	if len(semantic) > 0 {
+		svc.semantic = semantic[0]
+	}
+	return svc
 }
 
 func (s *Service) Search(ctx context.Context, q Query) (Response, error) {
@@ -55,7 +64,29 @@ func (s *Service) Search(ctx context.Context, q Query) (Response, error) {
 	}
 
 	results := make([]SearchResult, 0, len(memoryResults)+5)
-	results = append(results, memoryResults...)
+	seen := map[string]struct{}{}
+	if s.semantic != nil && strings.TrimSpace(q.Text) != "" {
+		semanticResults, err := s.semantic.SearchSemantic(ctx, q)
+		if err != nil {
+			return Response{}, err
+		}
+		for _, result := range semanticResults {
+			if objID := asString(result["object_id"]); objID != "" {
+				seen[objID] = struct{}{}
+			}
+			results = append(results, result)
+		}
+	}
+	for _, result := range memoryResults {
+		objID := asString(result["object_id"])
+		if objID != "" {
+			if _, ok := seen[objID]; ok {
+				continue
+			}
+			seen[objID] = struct{}{}
+		}
+		results = append(results, result)
+	}
 
 	if q.IncludeEvents && s.events != nil {
 		eventLimit := q.Limit / 2

@@ -11,10 +11,13 @@ import (
 	"github.com/aileun/engram/internal/api"
 	"github.com/aileun/engram/internal/config"
 	"github.com/aileun/engram/internal/curate"
+	"github.com/aileun/engram/internal/embedding"
 	"github.com/aileun/engram/internal/govern"
+	"github.com/aileun/engram/internal/index"
 	"github.com/aileun/engram/internal/ingest"
 	"github.com/aileun/engram/internal/quality"
 	"github.com/aileun/engram/internal/retrieve"
+	qdrantstore "github.com/aileun/engram/internal/storage/qdrant"
 	sqlitestore "github.com/aileun/engram/internal/storage/sqlite"
 	"github.com/aileun/engram/internal/workers"
 )
@@ -38,10 +41,22 @@ func main() {
 		log.Fatalf("apply migrations: %v", err)
 	}
 
+	var indexSvc *index.Service
+	if cfg.Storage.QdrantURL != "" {
+		qdrantClient, err := qdrantstore.New(cfg.Storage.QdrantURL, cfg.Storage.QdrantCollection)
+		if err != nil {
+			log.Fatalf("init qdrant client: %v", err)
+		}
+		indexSvc = index.NewService(qdrantClient, embedding.NewHashProvider(embedding.HashVectorSize), embedding.HashVectorSize)
+		if err := indexSvc.Ensure(context.Background()); err != nil {
+			log.Fatalf("ensure qdrant collection: %v", err)
+		}
+	}
+
 	ingestSvc := ingest.NewService(store)
-	curateSvc := curate.NewService(store)
-	governSvc := govern.NewService(store)
-	retrieveSvc := retrieve.NewService(store, store)
+	curateSvc := curate.NewService(store, indexSvc)
+	governSvc := govern.NewService(store, indexSvc)
+	retrieveSvc := retrieve.NewService(store, store, indexSvc)
 	qualitySvc := quality.NewService(store)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

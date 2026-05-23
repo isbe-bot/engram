@@ -14,13 +14,22 @@ type memoryCreator interface {
 	CreateMemoryObject(ctx context.Context, m models.MemoryObject, env contracts.MutationEnvelope) (models.MemoryObject, error)
 }
 
-type Service struct {
-	store memoryCreator
-	now   func() time.Time
+type memoryIndexer interface {
+	IndexMemory(ctx context.Context, obj models.MemoryObject) error
 }
 
-func NewService(store memoryCreator) *Service {
-	return &Service{store: store, now: time.Now}
+type Service struct {
+	store   memoryCreator
+	indexer memoryIndexer
+	now     func() time.Time
+}
+
+func NewService(store memoryCreator, indexers ...memoryIndexer) *Service {
+	svc := &Service{store: store, now: time.Now}
+	if len(indexers) > 0 {
+		svc.indexer = indexers[0]
+	}
+	return svc
 }
 
 func (s *Service) Curate(ctx context.Context, req contracts.MemoryWriteRequest) (models.MemoryObject, error) {
@@ -60,5 +69,14 @@ func (s *Service) Curate(ctx context.Context, req contracts.MemoryWriteRequest) 
 		env.Signature = "unsigned"
 	}
 
-	return s.store.CreateMemoryObject(ctx, obj, env)
+	created, err := s.store.CreateMemoryObject(ctx, obj, env)
+	if err != nil {
+		return models.MemoryObject{}, err
+	}
+	if s.indexer != nil {
+		if err := s.indexer.IndexMemory(ctx, created); err != nil {
+			return models.MemoryObject{}, fmt.Errorf("index memory object: %w", err)
+		}
+	}
+	return created, nil
 }

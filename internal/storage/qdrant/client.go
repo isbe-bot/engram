@@ -66,6 +66,9 @@ func (c *Client) EnsureCollection(ctx context.Context, vectorSize int) error {
 		},
 	}
 	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("/collections/%s", url.PathEscape(c.collection)), payload)
+	if err != nil && strings.Contains(err.Error(), "status=409") && strings.Contains(strings.ToLower(err.Error()), "already exists") {
+		return nil
+	}
 	return err
 }
 
