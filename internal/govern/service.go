@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aileun/engram/internal/models"
-	"github.com/aileun/engram/internal/policy"
-	"github.com/aileun/engram/pkg/contracts"
+	"github.com/isbe-bot/engram/internal/models"
+	"github.com/isbe-bot/engram/internal/policy"
+	"github.com/isbe-bot/engram/pkg/contracts"
 )
 
 const protectedConfidenceThreshold = 0.90

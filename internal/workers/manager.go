@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aileun/engram/internal/config"
+	"github.com/isbe-bot/engram/internal/config"
 )
 
 type Manager struct {

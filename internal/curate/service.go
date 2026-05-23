@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aileun/engram/internal/models"
-	"github.com/aileun/engram/pkg/contracts"
+	"github.com/isbe-bot/engram/internal/models"
+	"github.com/isbe-bot/engram/pkg/contracts"
 )
 
 type memoryCreator interface {

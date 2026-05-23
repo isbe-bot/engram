@@ -36,3 +36,35 @@ func TestLoadValidation(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestLoadDefaultsAndEnvOverrides(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "minimal.yaml")
+	if err := os.WriteFile(cfgPath, []byte("storage:\n  sqlite_path: './local.sqlite'\n"), 0o644); err != nil {
+		t.Fatalf("write cfg: %v", err)
+	}
+	t.Setenv("ENGRAM_SERVER_PORT", "9876")
+	t.Setenv("ENGRAM_API_KEY", "test-token")
+	t.Setenv("ENGRAM_MAX_BODY_BYTES", "2048")
+	t.Setenv("ENGRAM_QDRANT_COLLECTION", "test_collection")
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Server.Bind != DefaultBind {
+		t.Fatalf("expected default bind %q, got %q", DefaultBind, cfg.Server.Bind)
+	}
+	if cfg.Server.Port != 9876 {
+		t.Fatalf("expected env port override, got %d", cfg.Server.Port)
+	}
+	if cfg.Server.APIKey != "test-token" {
+		t.Fatalf("expected env API key override")
+	}
+	if cfg.Server.MaxBodyBytes != 2048 {
+		t.Fatalf("expected max body override, got %d", cfg.Server.MaxBodyBytes)
+	}
+	if cfg.Storage.QdrantCollection != "test_collection" {
+		t.Fatalf("expected qdrant collection override")
+	}
+}

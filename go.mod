@@ -1,4 +1,4 @@
-module github.com/aileun/engram
+module github.com/isbe-bot/engram
 
 go 1.26.3
 

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aileun/engram/internal/embedding"
-	"github.com/aileun/engram/internal/models"
-	"github.com/aileun/engram/internal/retrieve"
-	"github.com/aileun/engram/internal/storage/qdrant"
+	"github.com/isbe-bot/engram/internal/embedding"
+	"github.com/isbe-bot/engram/internal/models"
+	"github.com/isbe-bot/engram/internal/retrieve"
+	"github.com/isbe-bot/engram/internal/storage/qdrant"
 )
 
 type fakeVectorStore struct {

@@ -73,6 +73,57 @@ make test
 ./bin/engramctl backup --config ./configs/example.yaml --out ./engram.sqlite.bak
 ```
 
+For local Docker-based development with Qdrant:
+
+```bash
+docker compose up --build
+```
+
+## Configuration
+
+ENGRAM loads YAML first, applies sensible defaults, then applies environment variable overrides.
+
+Key YAML fields:
+
+```yaml
+server:
+  bind: "127.0.0.1"
+  port: 8787
+  api_key: ""              # optional Bearer token; strongly recommended when networked
+  max_body_bytes: 1048576  # write-endpoint JSON body limit
+
+storage:
+  sqlite_path: "/var/lib/engram/engram.sqlite"
+  qdrant_url: "http://127.0.0.1:6333"
+  qdrant_collection: "engram_memory"
+
+ingestion:
+  max_batch_size: 200
+  worker_count: 2
+```
+
+Supported environment overrides:
+
+- `ENGRAM_SERVER_BIND`
+- `ENGRAM_SERVER_PORT`
+- `ENGRAM_API_KEY`
+- `ENGRAM_MAX_BODY_BYTES`
+- `ENGRAM_SQLITE_PATH`
+- `ENGRAM_QDRANT_URL`
+- `ENGRAM_QDRANT_COLLECTION`
+- `ENGRAM_MAX_BATCH_SIZE`
+- `ENGRAM_WORKER_COUNT`
+- `ENGRAM_QUALITY_EVAL_INTERVAL`
+
+## Security recommendations
+
+- Keep `server.bind` on `127.0.0.1` unless ENGRAM is intentionally being exposed.
+- Set `server.api_key` or `ENGRAM_API_KEY` before putting ENGRAM behind Docker port publishing, a reverse proxy, Tailscale, or any non-local interface.
+- Authenticated clients must send `Authorization: Bearer <api_key>`.
+- `/v1/health` remains unauthenticated for local liveness checks. All other API endpoints, including `/metrics`, require the token when configured.
+- Keep `server.max_body_bytes` low enough for expected memory payloads. The default is 1 MiB.
+- Prefer backup/restore workflows over direct SQLite edits.
+
 ## Current API (v1 bootstrap)
 
 - `GET /v1/health`
@@ -85,6 +136,7 @@ make test
 - `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>&cursor=<offset>&include_events=<true|false>`
 - `GET /v1/quality/metrics`
 - `GET /v1/quality/report`
+- `GET /metrics` (Prometheus-style text metrics)
 
 Governance mutation endpoints require signed envelope fields:
 - `envelope.actor_id`

@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aileun/engram/internal/citations"
-	"github.com/aileun/engram/internal/models"
-	"github.com/aileun/engram/internal/retrieve"
-	"github.com/aileun/engram/pkg/contracts"
+	"github.com/isbe-bot/engram/internal/citations"
+	"github.com/isbe-bot/engram/internal/models"
+	"github.com/isbe-bot/engram/internal/retrieve"
+	"github.com/isbe-bot/engram/pkg/contracts"
 )
 
 func (s *Store) CreateMemoryObject(ctx context.Context, m models.MemoryObject, env contracts.MutationEnvelope) (models.MemoryObject, error) {

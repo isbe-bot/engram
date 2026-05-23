@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aileun/engram/internal/curate"
-	"github.com/aileun/engram/internal/govern"
-	"github.com/aileun/engram/internal/ingest"
-	"github.com/aileun/engram/internal/quality"
-	"github.com/aileun/engram/internal/retrieve"
-	sqlitestore "github.com/aileun/engram/internal/storage/sqlite"
+	"github.com/isbe-bot/engram/internal/curate"
+	"github.com/isbe-bot/engram/internal/govern"
+	"github.com/isbe-bot/engram/internal/ingest"
+	"github.com/isbe-bot/engram/internal/quality"
+	"github.com/isbe-bot/engram/internal/retrieve"
+	sqlitestore "github.com/isbe-bot/engram/internal/storage/sqlite"
 )
 
 type apiTestServer struct {
@@ -149,6 +149,41 @@ func TestMemoryAPIIntegrationLifecycle(t *testing.T) {
 	}
 }
 
+func TestMemoryAPIAuthAndBodyLimit(t *testing.T) {
+	store, err := sqlitestore.New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	if err := store.ApplyMigrations(); err != nil {
+		_ = store.Close()
+		t.Fatalf("apply migrations: %v", err)
+	}
+	mux := http.NewServeMux()
+	registerRoutes(mux, Dependencies{
+		Ingest:       ingest.NewService(store),
+		Curate:       curate.NewService(store),
+		Govern:       govern.NewService(store),
+		Search:       retrieve.NewService(store, store),
+		Quality:      quality.NewService(store),
+		Health:       store,
+		APIKey:       "secret-test-token",
+		MaxBodyBytes: 32,
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		ts.Close()
+		if err := store.Close(); err != nil {
+			t.Fatalf("close sqlite store: %v", err)
+		}
+	})
+	client := ts.Client()
+
+	doJSON(t, client, http.MethodGet, ts.URL+"/v1/health", nil, http.StatusOK)
+	doJSON(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, http.StatusUnauthorized)
+	doRawWithHeaders(t, client, http.MethodGet, ts.URL+"/v1/memory/search?q=test", nil, map[string]string{"Authorization": "Bearer secret-test-token"}, http.StatusOK)
+	doRawWithHeaders(t, client, http.MethodPost, ts.URL+"/v1/events/ingest", []byte(`{"event_id":"`+strings.Repeat("x", 64)+`"}`), map[string]string{"Authorization": "Bearer secret-test-token", "Content-Type": "application/json"}, http.StatusRequestEntityTooLarge)
+}
+
 func TestMemoryAPIIntegrationValidation(t *testing.T) {
 	ts := newAPITestServer(t)
 	client := ts.server.Client()
@@ -194,6 +229,11 @@ func doJSON(t *testing.T, client *http.Client, method, url string, body any, wan
 
 func doRaw(t *testing.T, client *http.Client, method, url string, body []byte, wantStatus int) map[string]any {
 	t.Helper()
+	return doRawWithHeaders(t, client, method, url, body, nil, wantStatus)
+}
+
+func doRawWithHeaders(t *testing.T, client *http.Client, method, url string, body []byte, headers map[string]string, wantStatus int) map[string]any {
+	t.Helper()
 
 	req, err := http.NewRequestWithContext(context.Background(), method, url, bytes.NewReader(body))
 	if err != nil {
@@ -201,6 +241,9 @@ func doRaw(t *testing.T, client *http.Client, method, url string, body []byte, w
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := client.Do(req)

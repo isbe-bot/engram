@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aileun/engram/internal/citations"
+	"github.com/isbe-bot/engram/internal/citations"
 )
 
 type SearchResult = map[string]any

@@ -12,8 +12,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/aileun/engram/internal/events"
-	"github.com/aileun/engram/internal/migrations"
+	"github.com/isbe-bot/engram/internal/events"
+	"github.com/isbe-bot/engram/internal/migrations"
 )
 
 type Store struct {

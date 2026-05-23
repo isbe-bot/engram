@@ -2,17 +2,21 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/aileun/engram/internal/events"
-	"github.com/aileun/engram/internal/models"
-	"github.com/aileun/engram/internal/quality"
-	"github.com/aileun/engram/internal/retrieve"
-	"github.com/aileun/engram/pkg/contracts"
+	"github.com/isbe-bot/engram/internal/events"
+	"github.com/isbe-bot/engram/internal/models"
+	"github.com/isbe-bot/engram/internal/quality"
+	"github.com/isbe-bot/engram/internal/retrieve"
+	"github.com/isbe-bot/engram/pkg/contracts"
 )
 
 type ingestor interface {
@@ -59,7 +63,35 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		})
 	})
 
-	mux.HandleFunc("/v1/events/ingest", func(w http.ResponseWriter, r *http.Request) {
+	requireAuth := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !authorized(r, deps.APIKey) {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="engram"`)
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+				return
+			}
+			next(w, r)
+		}
+	}
+
+	mux.HandleFunc("/metrics", requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+			return
+		}
+		if deps.Quality == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "quality service unavailable"})
+			return
+		}
+		metrics, err := deps.Quality.Metrics(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "metrics unavailable"})
+			return
+		}
+		writePrometheusMetrics(w, metrics)
+	}))
+
+	mux.HandleFunc("/v1/events/ingest", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -70,8 +102,8 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		}
 
 		var env events.Envelope
-		if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		if err := decodeJSONBody(w, r, deps.MaxBodyBytes, &env); err != nil {
+			writeJSON(w, statusForDecodeError(err), map[string]any{"error": messageForDecodeError(err)})
 			return
 		}
 		if err := deps.Ingest.Ingest(r.Context(), env); err != nil {
@@ -85,9 +117,9 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		}
 
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "event_id": env.EventID})
-	})
+	}))
 
-	mux.HandleFunc("/v1/memory/curate", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/memory/curate", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -98,8 +130,8 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		}
 
 		var req contracts.MemoryWriteRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		if err := decodeJSONBody(w, r, deps.MaxBodyBytes, &req); err != nil {
+			writeJSON(w, statusForDecodeError(err), map[string]any{"error": messageForDecodeError(err)})
 			return
 		}
 		obj, err := deps.Curate.Curate(r.Context(), req)
@@ -113,9 +145,9 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		}
 
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "memory": obj})
-	})
+	}))
 
-	mux.HandleFunc("/v1/memory/search", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/memory/search", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -152,7 +184,7 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 			IncludeEvents: includeEvents,
 		})
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "search failed"})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -168,9 +200,9 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 				"include_events": includeEvents,
 			},
 		})
-	})
+	}))
 
-	mux.HandleFunc("/v1/quality/report", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/quality/report", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -181,13 +213,13 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		}
 		report, err := deps.Quality.Report(r.Context())
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "quality report unavailable"})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"report": report})
-	})
+	}))
 
-	mux.HandleFunc("/v1/quality/metrics", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/quality/metrics", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 			return
@@ -198,13 +230,13 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		}
 		metrics, err := deps.Quality.Metrics(r.Context())
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "quality metrics unavailable"})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"metrics": metrics})
-	})
+	}))
 
-	mux.HandleFunc("/v1/memory/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/memory/", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if deps.Govern == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "govern service unavailable"})
 			return
@@ -277,8 +309,8 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 				return
 			}
 			var req contracts.MemoryCorrectRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+			if err := decodeJSONBody(w, r, deps.MaxBodyBytes, &req); err != nil {
+				writeJSON(w, statusForDecodeError(err), map[string]any{"error": messageForDecodeError(err)})
 				return
 			}
 			obj, err := deps.Govern.Correct(r.Context(), objectID, req)
@@ -297,8 +329,8 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 				return
 			}
 			var req contracts.MemoryDeprecateRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+			if err := decodeJSONBody(w, r, deps.MaxBodyBytes, &req); err != nil {
+				writeJSON(w, statusForDecodeError(err), map[string]any{"error": messageForDecodeError(err)})
 				return
 			}
 			obj, err := deps.Govern.Deprecate(r.Context(), objectID, req)
@@ -314,7 +346,51 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		default:
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		}
-	})
+	}))
+}
+
+func authorized(r *http.Request, apiKey string) bool {
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return true
+	}
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	if !strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		return false
+	}
+	got := strings.TrimSpace(auth[len("Bearer "):])
+	return subtle.ConstantTimeCompare([]byte(got), []byte(apiKey)) == 1
+}
+
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any) error {
+	if maxBytes <= 0 {
+		maxBytes = 1 << 20
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return errors.New("request body must contain a single JSON value")
+	}
+	return nil
+}
+
+func statusForDecodeError(err error) int {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		return http.StatusRequestEntityTooLarge
+	}
+	return http.StatusBadRequest
+}
+
+func messageForDecodeError(err error) string {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		return "request body too large"
+	}
+	return "invalid JSON body"
 }
 
 func parseBoolQuery(raw string) bool {
@@ -330,4 +406,20 @@ func writeJSON(w http.ResponseWriter, status int, payload map[string]any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func writePrometheusMetrics(w http.ResponseWriter, metrics quality.Snapshot) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	_, _ = fmt.Fprintf(w, "# HELP engram_events_total Total ingested events.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE engram_events_total gauge\nengram_events_total %d\n", metrics.EventCount)
+	_, _ = fmt.Fprintf(w, "# HELP engram_memory_objects_total Total memory objects.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE engram_memory_objects_total gauge\nengram_memory_objects_total %d\n", metrics.MemoryObjectCount)
+	_, _ = fmt.Fprintf(w, "# HELP engram_corrections_total Total memory corrections.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE engram_corrections_total gauge\nengram_corrections_total %d\n", metrics.CorrectionCount)
+	_, _ = fmt.Fprintf(w, "# HELP engram_deprecations_total Total memory deprecations.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE engram_deprecations_total gauge\nengram_deprecations_total %d\n", metrics.DeprecationCount)
+	if metrics.IngestionLagSeconds != nil {
+		_, _ = fmt.Fprintf(w, "# HELP engram_ingestion_lag_seconds Current ingestion lag in seconds.\n")
+		_, _ = fmt.Fprintf(w, "# TYPE engram_ingestion_lag_seconds gauge\nengram_ingestion_lag_seconds %d\n", *metrics.IngestionLagSeconds)
+	}
 }

@@ -1,0 +1,27 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  engramd:
+    build: .
+    depends_on:
+      - qdrant
+    ports:
+      - "8787:8787"
+    environment:
+      ENGRAM_SERVER_BIND: "0.0.0.0"
+      ENGRAM_SQLITE_PATH: "/data/engram.sqlite"
+      ENGRAM_QDRANT_URL: "http://qdrant:6333"
+      ENGRAM_QDRANT_COLLECTION: "engram_memory"
+      # Set before exposing beyond local development.
+      ENGRAM_API_KEY: ""
+    volumes:
+      - engram_data:/data
+
+volumes:
+  engram_data:
+  qdrant_data:

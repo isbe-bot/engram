@@ -1,12 +1,16 @@
 server:
   bind: "127.0.0.1"
   port: 8787
+  # Optional but strongly recommended if ENGRAM is reachable by anything
+  # other than trusted local processes. Clients send: Authorization: Bearer <api_key>
+  api_key: ""
+  # Maximum JSON request body size for write endpoints (1 MiB default).
+  max_body_bytes: 1048576
 
 storage:
   sqlite_path: "/srv/aileun/clients/example/runtime/db/engram.sqlite"
   qdrant_url: "http://127.0.0.1:6333"
   qdrant_collection: "engram_memory"
-  redis_addr: "127.0.0.1:6379"
 
 ingestion:
   max_batch_size: 200

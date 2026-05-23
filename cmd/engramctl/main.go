@@ -15,12 +15,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aileun/engram/internal/config"
-	"github.com/aileun/engram/internal/embedding"
-	"github.com/aileun/engram/internal/index"
-	"github.com/aileun/engram/internal/quality"
-	qdrantstore "github.com/aileun/engram/internal/storage/qdrant"
-	sqlitestore "github.com/aileun/engram/internal/storage/sqlite"
+	"github.com/isbe-bot/engram/internal/config"
+	"github.com/isbe-bot/engram/internal/embedding"
+	"github.com/isbe-bot/engram/internal/index"
+	"github.com/isbe-bot/engram/internal/quality"
+	qdrantstore "github.com/isbe-bot/engram/internal/storage/qdrant"
+	sqlitestore "github.com/isbe-bot/engram/internal/storage/sqlite"
 )
 
 func main() {
@@ -285,6 +285,9 @@ func runAPICommand(configPath, method, path string, body []byte) {
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if strings.TrimSpace(cfg.Server.APIKey) != "" {
+		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(cfg.Server.APIKey))
 	}
 
 	client := &http.Client{Timeout: 15 * time.Second}

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aileun/engram/internal/policy"
+	"github.com/isbe-bot/engram/internal/policy"
 )
 
 const (

@@ -6,16 +6,18 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aileun/engram/internal/config"
+	"github.com/isbe-bot/engram/internal/config"
 )
 
 type Dependencies struct {
-	Ingest  ingestor
-	Curate  curator
-	Govern  governor
-	Search  searcher
-	Quality qualityReporter
-	Health  pinger
+	Ingest       ingestor
+	Curate       curator
+	Govern       governor
+	Search       searcher
+	Quality      qualityReporter
+	Health       pinger
+	APIKey       string
+	MaxBodyBytes int64
 }
 
 type Server struct {
@@ -23,6 +25,8 @@ type Server struct {
 }
 
 func NewServer(cfg config.Config, deps Dependencies) *Server {
+	deps.APIKey = cfg.Server.APIKey
+	deps.MaxBodyBytes = cfg.Server.MaxBodyBytes
 	mux := http.NewServeMux()
 	registerRoutes(mux, deps)
 	return &Server{http: &http.Server{Addr: fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.Port), Handler: mux}}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aileun/engram/internal/events"
+	"github.com/isbe-bot/engram/internal/events"
 )
 
 type eventWriter interface {

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aileun/engram/internal/events"
-	"github.com/aileun/engram/internal/models"
-	"github.com/aileun/engram/internal/retrieve"
-	"github.com/aileun/engram/pkg/contracts"
+	"github.com/isbe-bot/engram/internal/events"
+	"github.com/isbe-bot/engram/internal/models"
+	"github.com/isbe-bot/engram/internal/retrieve"
+	"github.com/isbe-bot/engram/pkg/contracts"
 )
 
 func testEnv(id string) contracts.MutationEnvelope {
