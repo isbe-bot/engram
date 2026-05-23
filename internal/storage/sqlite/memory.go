@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aileun/engram/internal/models"
+	"github.com/aileun/engram/internal/retrieve"
 )
 
 func (s *Store) CreateMemoryObject(ctx context.Context, m models.MemoryObject) (models.MemoryObject, error) {
@@ -151,6 +152,106 @@ func (s *Store) GetMemoryObject(ctx context.Context, objectID string) (models.Me
 	}
 
 	return obj, nil
+}
+
+func (s *Store) SearchMemoryObjects(ctx context.Context, q retrieve.Query) ([]map[string]any, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("sqlite store is not initialized")
+	}
+
+	limit := q.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+
+	filters := make([]string, 0)
+	args := make([]any, 0)
+
+	if text := strings.TrimSpace(q.Text); text != "" {
+		like := "%" + text + "%"
+		filters = append(filters, `(type LIKE ? OR content LIKE ? OR classification LIKE ? OR source_refs_json LIKE ?)`)
+		args = append(args, like, like, like, like)
+	}
+	if status := strings.TrimSpace(q.Status); status != "" {
+		filters = append(filters, `status = ?`)
+		args = append(args, status)
+	}
+	if q.MinConfidence > 0 {
+		filters = append(filters, `confidence >= ?`)
+		args = append(args, q.MinConfidence)
+	}
+
+	sqlText := `
+		SELECT object_id, type, schema_version, content, source_refs_json,
+		       confidence, classification, status, created_at, updated_at
+		FROM memory_objects
+	`
+	if len(filters) > 0 {
+		sqlText += " WHERE " + strings.Join(filters, " AND ")
+	}
+	sqlText += ` ORDER BY updated_at DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, sqlText, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search memory objects: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]map[string]any, 0)
+	for rows.Next() {
+		var (
+			objID          string
+			typeName       string
+			schemaVersion  string
+			content        string
+			sourceRefsJSON string
+			confidence     float64
+			classification string
+			status         string
+			createdAt      string
+			updatedAt      string
+			sourceRefs     []string
+		)
+		if err := rows.Scan(&objID, &typeName, &schemaVersion, &content, &sourceRefsJSON, &confidence, &classification, &status, &createdAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scan memory object result: %w", err)
+		}
+		if sourceRefsJSON != "" {
+			_ = json.Unmarshal([]byte(sourceRefsJSON), &sourceRefs)
+		}
+		if sourceRefs == nil {
+			sourceRefs = []string{}
+		}
+
+		citations := make([]map[string]any, 0, len(sourceRefs)+1)
+		citations = append(citations, map[string]any{
+			"kind": "memory_object",
+			"path": "memory_objects/" + objID,
+		})
+		for _, ref := range sourceRefs {
+			citations = append(citations, map[string]any{"kind": "source_ref", "path": ref})
+		}
+
+		results = append(results, map[string]any{
+			"object_id":        objID,
+			"type":             typeName,
+			"schema_version":   schemaVersion,
+			"content":          content,
+			"source_refs":      sourceRefs,
+			"confidence":       confidence,
+			"classification":   classification,
+			"status":           status,
+			"created_at":       createdAt,
+			"updated_at":       updatedAt,
+			"citations":        citations,
+			"retrieval_source": "memory_objects",
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate memory object results: %w", err)
+	}
+
+	return results, nil
 }
 
 func (s *Store) MemoryObjectCount(ctx context.Context) (int, error) {

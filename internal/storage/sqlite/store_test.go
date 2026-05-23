@@ -8,6 +8,7 @@ import (
 
 	"github.com/aileun/engram/internal/events"
 	"github.com/aileun/engram/internal/models"
+	"github.com/aileun/engram/internal/retrieve"
 )
 
 func TestStoreInsertAndSearch(t *testing.T) {
@@ -109,5 +110,69 @@ func TestMemoryObjectLifecycle(t *testing.T) {
 	}
 	if deprecated.Status != models.MemoryStatusDeprecated {
 		t.Fatalf("expected deprecated status, got %s", deprecated.Status)
+	}
+}
+
+func TestSearchMemoryObjectsWithFiltersAndCitations(t *testing.T) {
+	ctx := context.Background()
+	store, err := New(filepath.Join(t.TempDir(), "engram.sqlite"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	if err := store.ApplyMigrations(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = store.CreateMemoryObject(ctx, models.MemoryObject{
+		ObjectID:       "mem-a",
+		Type:           "decision",
+		SchemaVer:      "v1",
+		Content:        "Use Go for ENGRAM core",
+		SourceRefs:     []string{"adr:0009"},
+		Confidence:     0.95,
+		Classification: "product",
+		Status:         models.MemoryStatusAccepted,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+	if err != nil {
+		t.Fatalf("create mem-a: %v", err)
+	}
+
+	_, err = store.CreateMemoryObject(ctx, models.MemoryObject{
+		ObjectID:       "mem-b",
+		Type:           "preference",
+		SchemaVer:      "v1",
+		Content:        "Prefer concise status updates",
+		SourceRefs:     []string{"chat:3811"},
+		Confidence:     0.40,
+		Classification: "communication",
+		Status:         models.MemoryStatusDeprecated,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+	if err != nil {
+		t.Fatalf("create mem-b: %v", err)
+	}
+
+	results, err := store.SearchMemoryObjects(ctx, retrieve.Query{Text: "Go", Status: models.MemoryStatusAccepted, MinConfidence: 0.9, Limit: 10})
+	if err != nil {
+		t.Fatalf("search memory objects: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if got := results[0]["object_id"]; got != "mem-a" {
+		t.Fatalf("unexpected object_id %v", got)
+	}
+	citations, ok := results[0]["citations"].([]map[string]any)
+	if !ok {
+		t.Fatalf("expected citations array, got %T", results[0]["citations"])
+	}
+	if len(citations) == 0 {
+		t.Fatal("expected citations to be populated")
 	}
 }

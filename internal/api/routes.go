@@ -10,6 +10,7 @@ import (
 
 	"github.com/aileun/engram/internal/events"
 	"github.com/aileun/engram/internal/models"
+	"github.com/aileun/engram/internal/retrieve"
 	"github.com/aileun/engram/pkg/contracts"
 )
 
@@ -18,7 +19,7 @@ type ingestor interface {
 }
 
 type searcher interface {
-	Search(ctx context.Context, query string, limit int) ([]map[string]any, error)
+	Search(ctx context.Context, q retrieve.Query) ([]map[string]any, error)
 }
 
 type curator interface {
@@ -116,20 +117,36 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 			return
 		}
 
-		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		queryText := strings.TrimSpace(r.URL.Query().Get("q"))
+		status := strings.TrimSpace(r.URL.Query().Get("status"))
 		limit := 20
 		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 			if v, err := strconv.Atoi(raw); err == nil {
 				limit = v
 			}
 		}
+		minConfidence := 0.0
+		if raw := strings.TrimSpace(r.URL.Query().Get("min_confidence")); raw != "" {
+			if v, err := strconv.ParseFloat(raw, 64); err == nil {
+				minConfidence = v
+			}
+		}
 
-		results, err := deps.Search.Search(r.Context(), q, limit)
+		results, err := deps.Search.Search(r.Context(), retrieve.Query{
+			Text:          queryText,
+			Status:        status,
+			MinConfidence: minConfidence,
+			Limit:         limit,
+		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"results": results, "count": len(results)})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"results": results,
+			"count":   len(results),
+			"filters": map[string]any{"q": queryText, "status": status, "min_confidence": minConfidence, "limit": limit},
+		})
 	})
 
 	mux.HandleFunc("/v1/memory/", func(w http.ResponseWriter, r *http.Request) {

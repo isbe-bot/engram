@@ -22,7 +22,7 @@ make test
 - `POST /v1/memory/curate`
 - `POST /v1/memory/{object_id}/correct`
 - `POST /v1/memory/{object_id}/deprecate`
-- `GET /v1/memory/search?q=<term>&limit=<n>`
+- `GET /v1/memory/search?q=<term>&status=<accepted|deprecated>&min_confidence=<0..1>&limit=<n>`
 
 ### Example ingest + curate + governance + search
 
@@ -60,8 +60,12 @@ curl -s -X POST http://127.0.0.1:8787/v1/memory/mem-1/deprecate \
   -H 'content-type: application/json' \
   -d '{"reason":"superseded by revised architecture"}'
 
-curl -s 'http://127.0.0.1:8787/v1/memory/search?q=Kickoff&limit=10'
+curl -s 'http://127.0.0.1:8787/v1/memory/search?q=Go&status=accepted&min_confidence=0.9&limit=10'
 ```
+
+Search results include `citations` for each memory object:
+- canonical memory path: `memory_objects/{object_id}`
+- all linked `source_refs`
 
 ## Project layout
 ```text
@@ -78,5 +82,5 @@ This foundation is aligned with `engram-go-service-blueprint-v1.md` and now incl
 - memory object contract tables (`memory_objects`, `memory_object_events`)
 - migration runner (embedded SQL)
 - curation and governance endpoints (`curate`, `correct`, `deprecate`)
-- basic text search over ingested event ledger
+- filtered retrieval over curated `memory_objects` with confidence/status controls and citation paths
 - CLI status/migrate commands (event + memory counts)
