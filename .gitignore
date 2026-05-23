@@ -1,13 +1,20 @@
-# Secrets — never commit these
-.secrets/
-.memory_env
+# Binaries
+bin/
+dist/
+*.exe
+*.out
 
-# Node
-node_modules/
+# Go artifacts
+*.test
+*.prof
+coverage.out
 
-# Logs
-*.log
-/var/log/mem-*.log
+# Env/config
+.env
+.env.*
+configs/local.yaml
 
-# OS
+# IDE/OS
 .DS_Store
+.vscode/
+.idea/
