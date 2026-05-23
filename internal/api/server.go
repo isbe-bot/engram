@@ -9,13 +9,19 @@ import (
 	"github.com/aileun/engram/internal/config"
 )
 
+type Dependencies struct {
+	Ingest ingestor
+	Search searcher
+	Health pinger
+}
+
 type Server struct {
 	http *http.Server
 }
 
-func NewServer(cfg config.Config) *Server {
+func NewServer(cfg config.Config, deps Dependencies) *Server {
 	mux := http.NewServeMux()
-	registerRoutes(mux)
+	registerRoutes(mux, deps)
 	return &Server{http: &http.Server{Addr: fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.Port), Handler: mux}}
 }
 

@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/aileun/engram/internal/config"
+	sqlitestore "github.com/aileun/engram/internal/storage/sqlite"
 )
 
 func main() {
@@ -26,16 +27,30 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
-	ctx := context.Background()
+	store, err := sqlitestore.New(cfg.Storage.SQLitePath)
+	if err != nil {
+		log.Fatalf("init sqlite store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
 	switch cmd {
 	case "status":
-		fmt.Printf("engramctl status OK\nserver=%s:%d sqlite=%s\n", cfg.Server.Bind, cfg.Server.Port, cfg.Storage.SQLitePath)
+		if err := store.ApplyMigrations(); err != nil {
+			log.Fatalf("migrations: %v", err)
+		}
+		count, err := store.EventCount(context.Background())
+		if err != nil {
+			log.Fatalf("count events: %v", err)
+		}
+		fmt.Printf("engramctl status OK\nserver=%s:%d sqlite=%s\nevent_count=%d\n", cfg.Server.Bind, cfg.Server.Port, cfg.Storage.SQLitePath, count)
 	case "migrate":
-		fmt.Printf("engramctl migrate TODO (sqlite=%s)\n", cfg.Storage.SQLitePath)
+		if err := store.ApplyMigrations(); err != nil {
+			log.Fatalf("migrations: %v", err)
+		}
+		fmt.Printf("engramctl migrate OK (sqlite=%s)\n", cfg.Storage.SQLitePath)
 	case "quality":
 		fmt.Printf("engramctl quality TODO (interval=%s)\n", cfg.Quality.EvalInterval)
 	default:
-		_ = ctx
 		log.Fatalf("unknown command: %s", cmd)
 	}
 }

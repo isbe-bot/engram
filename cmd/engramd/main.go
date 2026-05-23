@@ -10,6 +10,9 @@ import (
 
 	"github.com/aileun/engram/internal/api"
 	"github.com/aileun/engram/internal/config"
+	"github.com/aileun/engram/internal/ingest"
+	"github.com/aileun/engram/internal/retrieve"
+	sqlitestore "github.com/aileun/engram/internal/storage/sqlite"
 	"github.com/aileun/engram/internal/workers"
 )
 
@@ -22,6 +25,19 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
+	store, err := sqlitestore.New(cfg.Storage.SQLitePath)
+	if err != nil {
+		log.Fatalf("init sqlite store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	if err := store.ApplyMigrations(); err != nil {
+		log.Fatalf("apply migrations: %v", err)
+	}
+
+	ingestSvc := ingest.NewService(store)
+	retrieveSvc := retrieve.NewService(store)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -31,7 +47,11 @@ func main() {
 	}
 	defer w.Stop(context.Background())
 
-	srv := api.NewServer(cfg)
+	srv := api.NewServer(cfg, api.Dependencies{
+		Ingest: ingestSvc,
+		Search: retrieveSvc,
+		Health: store,
+	})
 	if err := srv.Start(ctx); err != nil {
 		log.Fatalf("server error: %v", err)
 	}

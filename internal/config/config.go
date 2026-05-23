@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -34,5 +36,21 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		return cfg, err
 	}
+	if err := cfg.Validate(); err != nil {
+		return cfg, err
+	}
 	return cfg, nil
+}
+
+func (c Config) Validate() error {
+	if strings.TrimSpace(c.Server.Bind) == "" {
+		return fmt.Errorf("server.bind is required")
+	}
+	if c.Server.Port <= 0 {
+		return fmt.Errorf("server.port must be > 0")
+	}
+	if strings.TrimSpace(c.Storage.SQLitePath) == "" {
+		return fmt.Errorf("storage.sqlite_path is required")
+	}
+	return nil
 }
