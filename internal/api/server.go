@@ -11,6 +11,8 @@ import (
 
 type Dependencies struct {
 	Ingest ingestor
+	Curate curator
+	Govern governor
 	Search searcher
 	Health pinger
 }

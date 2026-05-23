@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/aileun/engram/internal/events"
+	"github.com/aileun/engram/internal/models"
+	"github.com/aileun/engram/pkg/contracts"
 )
 
 type ingestor interface {
@@ -17,6 +19,15 @@ type ingestor interface {
 
 type searcher interface {
 	Search(ctx context.Context, query string, limit int) ([]map[string]any, error)
+}
+
+type curator interface {
+	Curate(ctx context.Context, req contracts.MemoryWriteRequest) (models.MemoryObject, error)
+}
+
+type governor interface {
+	Correct(ctx context.Context, objectID string, req contracts.MemoryCorrectRequest) (models.MemoryObject, error)
+	Deprecate(ctx context.Context, objectID string, req contracts.MemoryDeprecateRequest) (models.MemoryObject, error)
 }
 
 type pinger interface {
@@ -67,6 +78,34 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "event_id": env.EventID})
 	})
 
+	mux.HandleFunc("/v1/memory/curate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+			return
+		}
+		if deps.Curate == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "curate service unavailable"})
+			return
+		}
+
+		var req contracts.MemoryWriteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+			return
+		}
+		obj, err := deps.Curate.Curate(r.Context(), req)
+		if err != nil {
+			status := http.StatusBadRequest
+			if strings.Contains(strings.ToLower(err.Error()), "already exists") {
+				status = http.StatusConflict
+			}
+			writeJSON(w, status, map[string]any{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusAccepted, map[string]any{"status": "accepted", "memory": obj})
+	})
+
 	mux.HandleFunc("/v1/memory/search", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
@@ -91,6 +130,63 @@ func registerRoutes(mux *http.ServeMux, deps Dependencies) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"results": results, "count": len(results)})
+	})
+
+	mux.HandleFunc("/v1/memory/", func(w http.ResponseWriter, r *http.Request) {
+		if deps.Govern == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "govern service unavailable"})
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+			return
+		}
+
+		path := strings.TrimPrefix(r.URL.Path, "/v1/memory/")
+		parts := strings.Split(path, "/")
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+			return
+		}
+		objectID := parts[0]
+		action := parts[1]
+
+		switch action {
+		case "correct":
+			var req contracts.MemoryCorrectRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+				return
+			}
+			obj, err := deps.Govern.Correct(r.Context(), objectID, req)
+			if err != nil {
+				status := http.StatusBadRequest
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					status = http.StatusNotFound
+				}
+				writeJSON(w, status, map[string]any{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "memory": obj})
+		case "deprecate":
+			var req contracts.MemoryDeprecateRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+				return
+			}
+			obj, err := deps.Govern.Deprecate(r.Context(), objectID, req)
+			if err != nil {
+				status := http.StatusBadRequest
+				if strings.Contains(strings.ToLower(err.Error()), "not found") {
+					status = http.StatusNotFound
+				}
+				writeJSON(w, status, map[string]any{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "memory": obj})
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		}
 	})
 }
 

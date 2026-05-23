@@ -10,6 +10,8 @@ import (
 
 	"github.com/aileun/engram/internal/api"
 	"github.com/aileun/engram/internal/config"
+	"github.com/aileun/engram/internal/curate"
+	"github.com/aileun/engram/internal/govern"
 	"github.com/aileun/engram/internal/ingest"
 	"github.com/aileun/engram/internal/retrieve"
 	sqlitestore "github.com/aileun/engram/internal/storage/sqlite"
@@ -36,6 +38,8 @@ func main() {
 	}
 
 	ingestSvc := ingest.NewService(store)
+	curateSvc := curate.NewService(store)
+	governSvc := govern.NewService(store)
 	retrieveSvc := retrieve.NewService(store)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -49,6 +53,8 @@ func main() {
 
 	srv := api.NewServer(cfg, api.Dependencies{
 		Ingest: ingestSvc,
+		Curate: curateSvc,
+		Govern: governSvc,
 		Search: retrieveSvc,
 		Health: store,
 	})

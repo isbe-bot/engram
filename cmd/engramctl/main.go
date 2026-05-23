@@ -38,11 +38,15 @@ func main() {
 		if err := store.ApplyMigrations(); err != nil {
 			log.Fatalf("migrations: %v", err)
 		}
-		count, err := store.EventCount(context.Background())
+		eventCount, err := store.EventCount(context.Background())
 		if err != nil {
 			log.Fatalf("count events: %v", err)
 		}
-		fmt.Printf("engramctl status OK\nserver=%s:%d sqlite=%s\nevent_count=%d\n", cfg.Server.Bind, cfg.Server.Port, cfg.Storage.SQLitePath, count)
+		memoryCount, err := store.MemoryObjectCount(context.Background())
+		if err != nil {
+			log.Fatalf("count memory objects: %v", err)
+		}
+		fmt.Printf("engramctl status OK\nserver=%s:%d sqlite=%s\nevent_count=%d\nmemory_object_count=%d\n", cfg.Server.Bind, cfg.Server.Port, cfg.Storage.SQLitePath, eventCount, memoryCount)
 	case "migrate":
 		if err := store.ApplyMigrations(); err != nil {
 			log.Fatalf("migrations: %v", err)
